@@ -78,4 +78,4 @@ See [LICENSE](LICENSE) for the full terms.
 
 ## Support
 
-This project is provided as-is. Bug reports and feature requests are welcome via [GitHub Issues](https://github.com/JesseKozeluh/DeployManager/issues). There is no guaranteed response time or paid support at this time.
+This software is provided **as-is with no support, warranty, or service-level agreement**. The author is under no obligation to respond to bug reports, feature requests, or questions. Community discussion is welcome via [GitHub Issues](https://github.com/JesseKozeluh/DeployManager/issues), but no response or fix is guaranteed.
