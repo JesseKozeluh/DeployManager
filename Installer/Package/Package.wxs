@@ -39,11 +39,14 @@
 
     <!-- ── Wizard UI ────────────────────────────────────────────────────── -->
     <!--
-      Full installer wizard: Welcome -> Licence -> Install location ->
-      Ready -> Progress -> Finish. Silent installs (/qn, /qb) bypass it,
-      so scripted and GPO deployment behave exactly as before.
+      Mondo wizard: Welcome -> Licence -> Setup Type (Typical/Custom/Complete)
+      -> [Custom: Feature tree + Install location] -> Ready -> Progress -> Finish.
+      "Typical" installs all Level=1 features (everything on by default).
+      "Custom" lets the user toggle Start Menu shortcuts and tray autostart.
+      Silent installs (/qn, /qb) bypass the wizard entirely.
     -->
-    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <ui:WixUI Id="WixUI_Mondo" />
     <WixVariable Id="WixUILicenseRtf" Value="$(PackageDir)License.rtf" />
     <WixVariable Id="WixUIBannerBmp"  Value="$(PackageDir)banner.bmp" />
     <WixVariable Id="WixUIDialogBmp"  Value="$(PackageDir)dialog.bmp" />
@@ -115,6 +118,11 @@
           <Directory Id="DATATFTPBOOTFOLDER" Name="Boot" />
         </Directory>
       </Directory>
+    </StandardDirectory>
+
+    <!-- Start Menu folder -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="STARTMENUFOLDER" Name="Deploy Manager" />
     </StandardDirectory>
 
     <!-- ── WebApp published binaries ─────────────────────────────────── -->
@@ -211,7 +219,7 @@
             KeyPath="yes" />
     </Component>
 
-    <!-- Start the tray app automatically at user logon -->
+    <!-- ── Tray auto-start at logon (optional feature) ─────────────────── -->
     <Component Id="TrayAutorunComp" Directory="INSTALLFOLDER">
       <RegistryValue Root="HKLM"
                      Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
@@ -219,6 +227,31 @@
                      Value="&quot;[TRAYFOLDER]DeployManagerTray.exe&quot;"
                      Type="string"
                      KeyPath="yes" />
+    </Component>
+
+    <!-- ── Start Menu shortcuts (optional feature) ─────────────────────── -->
+    <Component Id="StartMenuComp" Guid="4D2B8A6F-9E1C-4F3A-B7D5-2C8E6A1F9B03" Directory="STARTMENUFOLDER">
+      <RegistryValue Root="HKCU"
+                     Key="SOFTWARE\DeployManager"
+                     Name="StartMenuInstalled"
+                     Value="1"
+                     Type="integer"
+                     KeyPath="yes" />
+      <Shortcut Id="TrayAppShortcut"
+                Name="Deploy Manager Tray"
+                Description="System tray monitor for the Deploy Manager service"
+                Target="[TRAYFOLDER]DeployManagerTray.exe"
+                WorkingDirectory="TRAYFOLDER"
+                Icon="DmIcon.ico" />
+      <Shortcut Id="SetupGuideShortcut"
+                Name="Deploy Manager Setup Guide"
+                Description="Open the setup and administration guide"
+                Target="[DOCSFOLDER]index.html"
+                WorkingDirectory="DOCSFOLDER" />
+      <util:InternetShortcut Id="WebUIShortcut"
+                             Name="Deploy Manager Web UI"
+                             Target="https://localhost:8090" />
+      <RemoveFolder Id="RemoveStartMenuFolder" On="uninstall" />
     </Component>
 
     <!-- ── tftpd64 ──────────────────────────────────────────────────────── -->
@@ -366,14 +399,17 @@
       <File Id="AutoexecIpxe"   Name="autoexec.ipxe"    Source="$(PackageDir)autoexec.ipxe" />
     </Component>
 
-    <!-- ── Feature ─────────────────────────────────────────────────────── -->
-    <Feature Id="ProductFeature" Title="Deploy Manager" Level="1">
+    <!-- ── Features ────────────────────────────────────────────────────── -->
+    <!--
+      Typical install (default): all features at Level 1 are included.
+      Custom install: user can toggle Start Menu shortcuts and tray autostart.
+    -->
+    <Feature Id="ProductFeature" Title="Deploy Manager" Description="Core application, services, and PXE boot infrastructure." Level="1" AllowAbsent="no" ConfigurableDirectory="INSTALLFOLDER">
       <ComponentGroupRef Id="WebAppFiles" />
       <ComponentGroupRef Id="ScriptFiles" />
       <ComponentRef Id="AppSettingsComp" />
       <ComponentRef Id="DeployManagerServiceComp" />
       <ComponentGroupRef Id="TrayAppFiles" />
-      <ComponentRef Id="TrayAutorunComp" />
       <ComponentRef Id="DocsComp" />
       <ComponentRef Id="Tftpd64FilesComp" />
       <ComponentRef Id="Tftpd64SvcComp" />
@@ -387,6 +423,14 @@
       <ComponentRef Id="DataTftpDirComp" />
       <ComponentRef Id="DataTftpBootDirComp" />
       <ComponentRef Id="IpxeBinariesComp" />
+
+      <Feature Id="StartMenuFeature" Title="Start Menu Shortcuts" Description="Add Deploy Manager shortcuts to the Windows Start Menu (Web UI, Tray, Setup Guide)." Level="1">
+        <ComponentRef Id="StartMenuComp" />
+      </Feature>
+
+      <Feature Id="TrayAutorunFeature" Title="Tray Auto-start" Description="Automatically launch the Deploy Manager tray monitor when any user logs in to Windows." Level="1">
+        <ComponentRef Id="TrayAutorunComp" />
+      </Feature>
     </Feature>
 
   </Package>
