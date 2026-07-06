@@ -78,6 +78,7 @@ public class DataStore
         ctx.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL;");
         ctx.Database.ExecuteSqlRaw("PRAGMA synchronous=NORMAL;");
 
+        MigrateSchema(ctx);
         MigrateFromJsonIfNeeded(ctx);
         SeedWimsFromDisk(ctx);
 
@@ -86,6 +87,23 @@ public class DataStore
             if (!EventLog.SourceExists("DeployManager"))
                 EventLog.CreateEventSource("DeployManager", "Application");
         }
+    }
+
+    private void MigrateSchema(DeployContext ctx)
+    {
+        // EnsureCreated() does not alter existing tables when the model changes.
+        // Add missing columns here so upgrades from earlier versions work.
+        using var cmd = ctx.Database.GetDbConnection().CreateCommand();
+        ctx.Database.OpenConnection();
+        cmd.CommandText = "PRAGMA table_info(Jobs)";
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var reader = cmd.ExecuteReader())
+            while (reader.Read()) columns.Add(reader.GetString(1));
+
+        if (!columns.Contains("JoinMode"))
+            ctx.Database.ExecuteSqlRaw("ALTER TABLE Jobs ADD COLUMN JoinMode TEXT NOT NULL DEFAULT 'domain'");
+        if (!columns.Contains("Workgroup"))
+            ctx.Database.ExecuteSqlRaw("ALTER TABLE Jobs ADD COLUMN Workgroup TEXT NOT NULL DEFAULT 'WORKGROUP'");
     }
 
     private void MigrateFromJsonIfNeeded(DeployContext ctx)
