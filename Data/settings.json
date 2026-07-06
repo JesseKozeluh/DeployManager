@@ -1,0 +1,21 @@
+{
+  "orgName": "",
+  "computerPrefix": "",
+  "deployServerUrl": "",
+  "apiServerUrl": "",
+  "serverIp": "",
+  "domainFqdn": "",
+  "serviceAccountUpn": "",
+  "serviceAccountPassword": "",
+  "defaultComputerOU": "",
+  "winpeLocalAccount": "WinPEAdmin",
+  "winpeLocalPassword": "",
+  "defaultTimezone": "UTC",
+  "authMode": "local",
+  "breakglassUser": "admin",
+  "breakglassHash": "",
+  "entraTenantId": "",
+  "entraClientId": "",
+  "entraClientSecret": "",
+  "sites": []
+}

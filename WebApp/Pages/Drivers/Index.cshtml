@@ -1,0 +1,104 @@
+@page
+@model DeployManager.Pages.Drivers.IndexModel
+@{ ViewData["Title"] = "Driver Packages"; ViewData["ActivePage"] = "Drivers"; }
+
+<div class="d-flex align-items-center mb-3">
+    <a asp-page="Upsert" class="btn btn-primary btn-sm ms-auto">
+        <i class="bi bi-plus-lg me-1"></i>Add Driver Package
+    </a>
+</div>
+
+@if (!Model.Packages.Any())
+{
+    <div class="card">
+        <div class="card-body text-secondary">
+            No driver packages yet. Create one, then place the driver <code>.inf</code> files into the
+            corresponding subfolder under <code>Drivers\OS\</code> in your installation directory.
+        </div>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Folder</th>
+                        <th>UNC Path (post-install)</th>
+                        <th class="text-center">Drivers</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var pkg in Model.Packages)
+                    {
+                        <tr>
+                            <td>
+                                <strong>@pkg.Name</strong>
+                                @if (!string.IsNullOrWhiteSpace(pkg.Description))
+                                {
+                                    <div class="text-secondary" style="font-size:.8rem">@pkg.Description</div>
+                                }
+                            </td>
+                            <td><code>Drivers\OS\@pkg.FolderName</code></td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(Model.ServerIp))
+                                {
+                                    <code class="small text-secondary">\\@Model.ServerIp\DeployManagerDrivers\@pkg.FolderName</code>
+                                }
+                                else
+                                {
+                                    <span class="text-warning small"><i class="bi bi-exclamation-triangle me-1"></i>Set Server IP in Settings</span>
+                                }
+                            </td>
+                            <td class="text-center">
+                                @{
+                                    var count = Model.InfCounts.GetValueOrDefault(pkg.Id, -1);
+                                }
+                                @if (count < 0)
+                                {
+                                    <span class="text-secondary small">folder missing</span>
+                                }
+                                else if (count == 0)
+                                {
+                                    <span class="text-warning small">0 .inf files</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-success">@count .inf</span>
+                                }
+                            </td>
+                            <td class="text-center">
+                                @if (pkg.Enabled)
+                                { <span class="badge bg-success">Enabled</span> }
+                                else
+                                { <span class="badge bg-secondary">Disabled</span> }
+                            </td>
+                            <td class="text-end">
+                                <a asp-page="Upsert" asp-route-id="@pkg.Id" class="btn btn-outline-secondary btn-sm">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <form method="post" asp-page-handler="Delete" asp-route-id="@pkg.Id" class="d-inline">
+                                    <button type="button" class="btn btn-outline-danger btn-sm"
+                                            data-dm-confirm="Delete driver package '@pkg.Name'? Driver files on disk are not deleted."
+                                            data-dm-ok="Delete package">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="form-text mt-2">
+        <i class="bi bi-info-circle me-1"></i>
+        The <strong>DeployManagerDrivers</strong> share must exist on your deployment server, pointing to <code>Drivers\OS\</code>
+        in your installation folder, with read access for Domain Computers.
+        Deleting a package here only removes the registration — files on disk are left untouched.
+    </div>
+}

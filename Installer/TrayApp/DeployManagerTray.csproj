@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>DeployManager.Tray</RootNamespace>
+    <AssemblyName>DeployManagerTray</AssemblyName>
+    <ApplicationIcon>deploymgr.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Authors>Jesse Kozeluh</Authors>
+    <Company>Jesse Kozeluh</Company>
+    <Product>Deploy Manager</Product>
+    <Copyright>Copyright (c) 2026 Jesse Kozeluh</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="deploymgr.ico">
+      <LogicalName>DeployManager.Tray.deploymgr.ico</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

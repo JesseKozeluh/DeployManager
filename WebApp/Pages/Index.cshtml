@@ -1,0 +1,138 @@
+@page
+@model IndexModel
+@{ ViewData["Title"] = "Dashboard"; ViewData["ActivePage"] = "Dashboard"; ViewData["ActiveImaging"] = Model.ActiveImaging; }
+
+@if (Model.CertExpireDays.HasValue && Model.CertExpireDays < 30)
+{
+    var certClass = Model.CertExpireDays < 7 ? "alert-danger" : "alert-warning";
+    <div class="alert @certClass alert-dismissible d-flex align-items-center gap-2 mb-3" style="font-size:.875rem">
+        <i class="bi bi-shield-exclamation"></i>
+        <span>
+            <strong>Certificate expiry:</strong> your HTTPS certificate expires in
+            <strong>@Model.CertExpireDays day@(Model.CertExpireDays == 1 ? "" : "s")</strong>.
+            <a asp-page="/Settings/Certificate" class="alert-link ms-1">Renew now</a>
+        </span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+@if (Model.ImagesFreeDiskGb.HasValue && Model.ImagesFreeDiskGb < 10)
+{
+    <div class="alert alert-warning alert-dismissible d-flex align-items-center gap-2 mb-3" style="font-size:.875rem">
+        <i class="bi bi-hdd"></i>
+        <span>
+            <strong>Low disk space:</strong> only <strong>@Model.ImagesFreeDiskGb GB</strong>
+            free on the images drive. WIM deployments may fail.
+        </span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="row g-3 mb-4">
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="num text-warning">@Model.PendingJobs</div>
+            <div class="lbl">Pending</div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="num" style="color:#e3b341">@Model.ActiveImaging</div>
+            <div class="lbl">Imaging Now</div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="num" style="color:#3fb950">@Model.CompletedToday</div>
+            <div class="lbl">Done Today</div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="num" style="color:#3fb950">@Model.SuccessRate</div>
+            <div class="lbl">Success Rate</div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="num">@Model.MachineCount</div>
+            <div class="lbl">Machines</div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="num" style="color:#bc8cff">@Model.PackageCount</div>
+            <div class="lbl">Packages</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-list-task me-2"></i>Recent Jobs</span>
+                <a asp-page="/Jobs/Index" class="btn btn-sm btn-outline-secondary">View all</a>
+            </div>
+            <div class="card-body p-0">
+                @if (!Model.RecentJobs.Any())
+                {
+                    <div class="p-4 text-center">
+                        <i class="bi bi-inbox text-secondary" style="font-size:2rem"></i>
+                        <p class="text-secondary mt-2 mb-1">No deployment jobs yet.</p>
+                        <a asp-page="/Deploy/Index" class="btn btn-sm btn-primary mt-1">
+                            <i class="bi bi-lightning-charge-fill me-1"></i>Create a deployment
+                        </a>
+                    </div>
+                }
+                else
+                {
+                    <table class="table table-hover mb-0">
+                        <thead><tr><th>Device</th><th>Site</th><th>Status</th><th>Created</th></tr></thead>
+                        <tbody>
+                        @foreach (var job in Model.RecentJobs)
+                        {
+                            <tr>
+                                <td><code>@job.DeviceName</code></td>
+                                <td>@job.Site</td>
+                                <td><span class="badge rounded-pill badge-@job.Status">@job.Status</span></td>
+                                <td class="text-secondary" style="font-size:.8rem">@job.Created.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-lightning-charge me-2"></i>Quick Actions</div>
+            <div class="card-body">
+                <a asp-page="/Deploy/Index" class="btn btn-primary w-100 mb-3">
+                    <i class="bi bi-play-fill me-1"></i> New Deployment
+                </a>
+                <div class="d-grid gap-2">
+                    <a asp-page="/Machines/Upsert" class="btn btn-outline-secondary btn-sm"><i class="bi bi-plus me-1"></i>Add Machine</a>
+                    <a asp-page="/Packages/Upsert" class="btn btn-outline-secondary btn-sm"><i class="bi bi-plus me-1"></i>Create Package</a>
+                    <a asp-page="/Software/Upsert" class="btn btn-outline-secondary btn-sm"><i class="bi bi-plus me-1"></i>Add Software</a>
+                    <a asp-page="/Audit/Index" class="btn btn-outline-secondary btn-sm"><i class="bi bi-journal-text me-1"></i>View Audit Log</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+// Reload the dashboard whenever any job status changes so stats stay current.
+// SignalR push replaces the old 10-second setTimeout — updates are now instant.
+(function () {
+    if (window.deployHub) {
+        window.deployHub.on('JobUpdated', function () {
+            window.location.reload();
+        });
+    }
+})();
+</script>
+}

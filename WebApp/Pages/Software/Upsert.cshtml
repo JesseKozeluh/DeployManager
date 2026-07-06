@@ -1,0 +1,122 @@
+@page "{id?}"
+@model DeployManager.Pages.Software.UpsertModel
+@{ ViewData["Title"] = Model.IsNew ? "Add Software" : "Edit Software"; ViewData["ActivePage"] = "Software"; }
+
+<div class="row justify-content-center">
+<div class="col-lg-7">
+<div class="card">
+<div class="card-header">@ViewData["Title"]</div>
+<div class="card-body">
+<form method="post">
+    <input type="hidden" asp-for="Item.Id" />
+    <div asp-validation-summary="All" class="alert alert-danger" style="display:@(ViewData.ModelState.IsValid ? "none" : "block")"></div>
+
+    <div class="mb-3">
+        <label asp-for="Item.Name" class="form-label">Name <span class="text-danger">*</span></label>
+        <input asp-for="Item.Name" class="form-control" placeholder="e.g. 7-Zip 23.01" required />
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Item.Description" class="form-label">Description</label>
+        <input asp-for="Item.Description" class="form-control" placeholder="Optional short description" />
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Item.InstallerType" class="form-label">Installer Type</label>
+        <select asp-for="Item.InstallerType" class="form-select" id="typeSelect">
+            <option value="MSI">MSI</option>
+            <option value="EXE">EXE</option>
+            <option value="Script">PowerShell Script</option>
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Item.InstallerPath" class="form-label">
+            Installer Path <span class="text-danger">*</span>
+        </label>
+        <input asp-for="Item.InstallerPath" class="form-control font-monospace" id="installerPath"
+               placeholder="\\server\share\app\setup.exe  or  /software/app/setup.msi" required />
+        <div class="form-text" id="pathHint"></div>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Item.WorkingDirectory" class="form-label">
+            Working Directory
+            <span class="text-secondary" style="font-size:.8rem"> — optional, defaults to installer's parent folder for UNC paths</span>
+        </label>
+        <input asp-for="Item.WorkingDirectory" class="form-control font-monospace"
+               placeholder="\\server\share\app" />
+        <div class="form-text">
+            Set this if the installer needs to run from a specific directory (e.g. side-by-side config files).
+        </div>
+    </div>
+
+    <div class="mb-4">
+        <label asp-for="Item.InstallCommand" class="form-label">
+            Install Command <span class="text-danger">*</span>
+            <span class="text-secondary" style="font-size:.8rem"> — <code>{installer}</code> is the resolved path to the installer file</span>
+        </label>
+        <input asp-for="Item.InstallCommand" class="form-control font-monospace" id="cmdInput" required />
+        <div class="form-text" id="cmdHint"></div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save</button>
+        <a asp-page="Index" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+</div>
+</div>
+</div>
+</div>
+
+@section Scripts {
+<script>
+const defaults = {
+    MSI:    'msiexec /i "{installer}" /qn /norestart',
+    EXE:    '"{installer}" /S /norestart',
+    Script: 'powershell -NoProfile -ExecutionPolicy Bypass -File "{installer}"'
+};
+const hints = {
+    MSI:    'Standard silent MSI install. Add extra properties after /qn if needed.',
+    EXE:    'Common EXE silent flag. Replace /S with the vendor\'s silent switch if different.',
+    Script: 'Runs the .ps1 file directly.'
+};
+const pathHints = {
+    unc:  'UNC path — installer runs directly from the network share. No download needed.',
+    http: 'HTTP path — installer is downloaded to %TEMP% on the target machine before running.'
+};
+
+const sel  = document.getElementById('typeSelect');
+const cmd  = document.getElementById('cmdInput');
+const hint = document.getElementById('cmdHint');
+const path = document.getElementById('installerPath');
+const ph   = document.getElementById('pathHint');
+
+function updateHint() { hint.textContent = hints[sel.value] || ''; }
+
+function updatePathHint() {
+    const v = path.value.trim();
+    if (v.startsWith('\\\\') || v.startsWith('//')) {
+        ph.innerHTML = '<i class="bi bi-hdd-network me-1"></i>' + pathHints.unc;
+        ph.className = 'form-text text-info';
+    } else if (v.startsWith('/')) {
+        ph.innerHTML = '<i class="bi bi-cloud-download me-1"></i>' + pathHints.http;
+        ph.className = 'form-text text-secondary';
+    } else {
+        ph.textContent = 'Start with \\\\ for a network share path, or / for an HTTP path on the deploy server.';
+        ph.className = 'form-text text-secondary';
+    }
+}
+
+sel.addEventListener('change', () => {
+    const current = cmd.value.trim();
+    const isDefault = Object.values(defaults).includes(current) || current === '';
+    if (isDefault) cmd.value = defaults[sel.value];
+    updateHint();
+});
+path.addEventListener('input', updatePathHint);
+updateHint();
+updatePathHint();
+</script>
+}

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Deploy Manager — Burn bootstrapper bundle (setup.exe)
+  Built via Build-Installer.ps1 at the repository root.
+
+  Wraps the Deploy Manager MSI together with the .NET 8 runtime installers.
+  On launch it detects whether each runtime is already present and installs
+  only what is missing, then runs the MSI — one setup.exe, no manual
+  prerequisite downloads.
+
+  Preprocessor variables (all required, supplied by the build script):
+    MsiPath        – full path to the built DeployManager-<Version>-Setup.msi
+    DotNetDir      – full path to the directory holding the runtime installers (trailing \)
+    DotNetVersion  – exact runtime version bundled, e.g. "8.0.28"
+    PackageDir     – full path to this Package\ directory (trailing \)
+    ProductVersion – semver string, e.g. "1.5.0"
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Bundle Name="Deploy Manager"
+          Manufacturer="Your Organisation"
+          Version="$(ProductVersion)"
+          UpgradeCode="9C4E31A7-5B82-4F6D-A3E9-7D218C50B4F3">
+
+    <!-- Standard wizard UI: welcome + licence page, progress, completion -->
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication
+          Theme="rtfLicense"
+          LicenseFile="$(PackageDir)License.rtf" />
+    </BootstrapperApplication>
+
+    <!--
+      Runtime detection. Checks for the exact bundled version's shared
+      framework directory. If a machine has a NEWER 8.0.x patch instead, the
+      detect misses and the bundled installer re-runs — the .NET installers
+      are side-by-side safe and exit quickly in that case, so this stays
+      correct at the cost of a few redundant seconds.
+    -->
+    <util:DirectorySearch Id="NetCoreRuntimeSearch"
+                          Path="[ProgramFiles64Folder]dotnet\shared\Microsoft.NETCore.App\$(DotNetVersion)"
+                          Variable="NETCORE_PRESENT"
+                          Result="exists" />
+    <util:DirectorySearch Id="AspNetCoreRuntimeSearch"
+                          Path="[ProgramFiles64Folder]dotnet\shared\Microsoft.AspNetCore.App\$(DotNetVersion)"
+                          Variable="ASPNET_PRESENT"
+                          Result="exists" />
+
+    <Chain>
+      <!-- Base .NET runtime: provides hostfxr + Microsoft.NETCore.App.
+           Permanent: uninstalling Deploy Manager must not remove a shared
+           machine-wide runtime other software may depend on. -->
+      <ExePackage Id="DotNetRuntime8"
+                  DisplayName=".NET Runtime $(DotNetVersion) (x64)"
+                  SourceFile="$(DotNetDir)dotnet-runtime-$(DotNetVersion)-win-x64.exe"
+                  DetectCondition="NETCORE_PRESENT"
+                  InstallArguments="/install /quiet /norestart"
+                  Permanent="yes"
+                  Vital="yes"
+                  Cache="remove" />
+
+      <!-- ASP.NET Core shared framework: separate from the base runtime;
+           the app needs both. -->
+      <ExePackage Id="AspNetCoreRuntime8"
+                  DisplayName="ASP.NET Core Runtime $(DotNetVersion) (x64)"
+                  SourceFile="$(DotNetDir)aspnetcore-runtime-$(DotNetVersion)-win-x64.exe"
+                  DetectCondition="ASPNET_PRESENT"
+                  InstallArguments="/install /quiet /norestart"
+                  Permanent="yes"
+                  Vital="yes"
+                  Cache="remove" />
+
+      <!-- The application itself -->
+      <MsiPackage Id="DeployManagerMsi"
+                  SourceFile="$(MsiPath)"
+                  Vital="yes" />
+    </Chain>
+
+  </Bundle>
+</Wix>

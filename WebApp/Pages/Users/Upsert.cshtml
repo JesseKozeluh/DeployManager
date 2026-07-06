@@ -1,0 +1,54 @@
+@page "{id?}"
+@model DeployManager.Pages.Users.UpsertModel
+@{
+    ViewData["Title"] = Model.IsNew ? "Add User" : "Edit User";
+    ViewData["ActivePage"] = "Users";
+}
+
+<div class="d-flex align-items-center mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-person-plus me-2"></i>@(Model.IsNew ? "Add User" : "Edit User")</h1>
+    <a asp-page="Index" class="btn btn-outline-secondary btn-sm ms-auto"><i class="bi bi-arrow-left me-1"></i>Back</a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="post">
+            <div asp-validation-summary="All" class="text-danger mb-2"></div>
+            <input type="hidden" asp-for="Item.Id" />
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label asp-for="Item.FirstName" class="form-label">First name</label>
+                    <input asp-for="Item.FirstName" class="form-control" />
+                </div>
+                <div class="col-md-6">
+                    <label asp-for="Item.LastName" class="form-label">Last name</label>
+                    <input asp-for="Item.LastName" class="form-control" />
+                </div>
+                <div class="col-md-8">
+                    <label asp-for="Item.Upn" class="form-label">UPN (Entra sign-in name) <span class="text-danger">*</span></label>
+                    <input asp-for="Item.Upn" class="form-control font-monospace" placeholder="jane.smith@contoso.com" required />
+                    <div class="form-text">Must match the user's Entra <code>preferred_username</code> / UPN exactly.</div>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="Item.Role" class="form-label">Role</label>
+                    <select asp-for="Item.Role" class="form-select">
+                        @foreach (var r in Model.Roles)
+                        {
+                            <option value="@r">@r</option>
+                        }
+                    </select>
+                    <div class="form-text">Administrator = full access incl. configuration. Operator = deployments only.</div>
+                </div>
+            </div>
+
+            <div class="form-check form-switch mt-3 mb-3">
+                <input asp-for="Item.Enabled" class="form-check-input" role="switch" />
+                <label asp-for="Item.Enabled" class="form-check-label">Enabled (allowed to sign in)</label>
+            </div>
+
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save</button>
+            <a asp-page="Index" class="btn btn-link">Cancel</a>
+        </form>
+    </div>
+</div>

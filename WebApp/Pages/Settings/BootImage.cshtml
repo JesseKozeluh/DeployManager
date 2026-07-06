@@ -1,0 +1,284 @@
+@page
+@model DeployManager.Pages.Settings.BootImageModel
+@{ ViewData["Title"] = "Boot Image"; ViewData["ActivePage"] = "BootImage"; }
+
+@if (Model.PatchOutput != null)
+{
+    <div class="alert @(Model.PatchSuccess ? "alert-success" : "alert-danger") alert-dismissible mb-4">
+        <strong>@(Model.PatchSuccess ? "Patch succeeded" : "Patch failed")</strong>
+        <pre class="mt-2 mb-0" style="font-size:.78rem;white-space:pre-wrap;word-break:break-all">@Model.PatchOutput</pre>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+@* Pre-flight status strip *@
+<div class="d-flex flex-wrap gap-2 mb-4">
+    <span class="badge @(Model.WimExists ? "bg-success" : "bg-danger") fs-6 fw-normal py-2 px-3">
+        <i class="bi @(Model.WimExists ? "bi-check-circle" : "bi-x-circle") me-1"></i>
+        boot.wim @(Model.WimExists ? "found" : "not found")
+    </span>
+    <span class="badge @(!string.IsNullOrEmpty(Model.ServerUrl) ? "bg-success" : "bg-warning text-dark") fs-6 fw-normal py-2 px-3">
+        <i class="bi @(!string.IsNullOrEmpty(Model.ServerUrl) ? "bi-check-circle" : "bi-exclamation-triangle") me-1"></i>
+        @(string.IsNullOrEmpty(Model.ServerUrl) ? "API URL not set" : "API URL configured")
+    </span>
+    <span class="badge @(Model.PasswordSet ? "bg-success" : "bg-warning text-dark") fs-6 fw-normal py-2 px-3">
+        <i class="bi @(Model.PasswordSet ? "bi-check-circle" : "bi-exclamation-triangle") me-1"></i>
+        WinPE password @(Model.PasswordSet ? "configured" : "not set")
+    </span>
+    @if (Model.AdkDismPath != null)
+    {
+        <span class="badge bg-success fs-6 fw-normal py-2 px-3">
+            <i class="bi bi-check-circle me-1"></i> ADK DISM found
+        </span>
+    }
+    else
+    {
+        <span class="badge bg-danger fs-6 fw-normal py-2 px-3">
+            <i class="bi bi-x-circle me-1"></i> ADK DISM not found
+        </span>
+    }
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+
+        @* Path card *@
+        <div class="card mb-4">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi bi-folder2"></i> boot.wim Location
+            </div>
+            <div class="card-body">
+                <form method="post" asp-page-handler="SavePath">
+                    <div class="mb-3">
+                        <label class="form-label">Path to boot.wim</label>
+                        <input asp-for="CustomBootWimPath" class="form-control font-monospace"
+                               placeholder="@Model.BootWimPath"
+                               value="@Model.BootWimPath" />
+                        <div class="form-text">
+                            Full path where boot.wim is stored inside the TFTP root.
+                            Supports <code>%ProgramData%</code> expansion.
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-floppy me-1"></i> Save path
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        @* Patch card *@
+        <div class="card mb-4">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi bi-wrench-adjustable-circle"></i> Patch boot.wim
+            </div>
+            <div class="card-body">
+                <p class="text-secondary" style="font-size:.875rem">
+                    Mounts <code>boot.wim</code> using ADK DISM, replaces the server URL and WinPE password
+                    placeholders in <code>Deploy\Start-OSDeploy.ps1</code>, then unmounts and commits.
+                    Run this whenever the API Server URL or WinPE password changes.
+                </p>
+                <table class="table table-sm mb-3" style="font-size:.85rem">
+                    <tbody>
+                        <tr>
+                            <th class="text-secondary fw-normal" style="width:140px">boot.wim</th>
+                            <td class="font-monospace">@Model.BootWimPath</td>
+                        </tr>
+                        <tr>
+                            <th class="text-secondary fw-normal">Server URL</th>
+                            <td class="font-monospace">
+                                @if (string.IsNullOrEmpty(Model.ServerUrl))
+                                {
+                                    <span class="text-warning">not configured — set API Server URL in Settings first</span>
+                                }
+                                else
+                                {
+                                    @Model.ServerUrl
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <th class="text-secondary fw-normal">WinPE password</th>
+                            <td>
+                                @if (Model.PasswordSet)
+                                {
+                                    <span class="text-success"><i class="bi bi-check-circle me-1"></i>Configured</span>
+                                }
+                                else
+                                {
+                                    <span class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Not set — configure in <a href="/Settings/Index">Settings</a></span>
+                                }
+                            </td>
+                        </tr>
+                        @if (Model.AdkDismPath != null)
+                        {
+                            <tr>
+                                <th class="text-secondary fw-normal">ADK DISM</th>
+                                <td class="font-monospace" style="font-size:.78rem">@Model.AdkDismPath</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                <form method="post" asp-page-handler="Patch">
+                    <button type="submit"
+                            class="btn btn-primary @(!Model.WimExists || string.IsNullOrEmpty(Model.ServerUrl) || !Model.PasswordSet || Model.AdkDismPath == null ? "disabled" : "")"
+                            @(!Model.WimExists || string.IsNullOrEmpty(Model.ServerUrl) || !Model.PasswordSet || Model.AdkDismPath == null ? "disabled" : "")
+                            data-dm-confirm="This will mount and modify boot.wim on disk. Continue?"
+                            data-dm-ok="Patch boot.wim"
+                            data-dm-class="btn btn-primary">
+                        <i class="bi bi-wrench-adjustable me-1"></i> Patch boot.wim
+                    </button>
+                    <span class="text-secondary ms-2" style="font-size:.8rem">
+                        Takes 60–90 seconds — do not navigate away.
+                    </span>
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="col-lg-5">
+
+        @* Manual use card *@
+        <div class="card mb-4">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi bi-terminal"></i> Manual / CLI use
+            </div>
+            <div class="card-body">
+                <p class="text-secondary" style="font-size:.82rem">
+                    You can also run <code>Update-BootWim.ps1</code> directly from an elevated PowerShell session on the server:
+                </p>
+                <pre class="p-2 rounded" style="background:#0d1117;font-size:.72rem;word-break:break-all;white-space:pre-wrap">Scripts\Update-BootWim.ps1 `
+  -BootWimPath "@Model.BootWimPath" `
+  -ServerUrl   "@(string.IsNullOrEmpty(Model.ServerUrl) ? "https://&lt;server&gt;:&lt;port&gt;" : Model.ServerUrl)" `
+  -WinpePassword "YourPassword"</pre>
+                <p class="text-secondary mt-2 mb-0" style="font-size:.78rem">
+                    <i class="bi bi-info-circle me-1"></i>
+                    ADK must be installed on the machine running the script. The script uses ADK DISM — not inbox DISM — because inbox DISM cannot service Windows Server 2022 25398-era WinPE images.
+                </p>
+            </div>
+        </div>
+
+        @* iPXE HTTP Boot card *@
+        <div class="card mb-4">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi bi-lightning-charge"></i> iPXE HTTP Boot
+                <span class="badge @(Model.IpxeEfiExists && Model.WimbootExists ? "bg-success" : "bg-secondary") ms-auto" style="font-size:.7rem">
+                    @(Model.IpxeEfiExists && Model.WimbootExists ? "Ready" : "Not configured")
+                </span>
+            </div>
+            <div class="card-body">
+                <p class="text-secondary mb-3" style="font-size:.82rem">
+                    Replaces large TFTP transfers with HTTP. iPXE chainloads from UEFI PXE, then downloads
+                    <code>boot.wim</code> at full LAN speed — 10–50x faster than TFTP on gigabit networks.
+                </p>
+
+                @* Readiness status *@
+                <div class="d-flex flex-column gap-1 mb-3" style="font-size:.82rem">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi @(Model.IpxeEfiExists ? "bi-check-circle-fill text-success" : "bi-circle text-secondary")"></i>
+                        <span><code>ipxe.efi</code> in TFTP root @(Model.IpxeEfiExists ? "" : "— missing")</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi @(Model.UndiExists ? "bi-check-circle-fill text-success" : "bi-circle text-secondary")"></i>
+                        <span><code>undionly.kpxe</code> in TFTP root @(Model.UndiExists ? "" : "— missing (BIOS only)")</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi @(Model.WimbootExists ? "bi-check-circle-fill text-success" : "bi-circle text-secondary")"></i>
+                        <span><code>wimboot</code> in TFTP root @(Model.WimbootExists ? "" : "— missing")</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi @(!string.IsNullOrEmpty(Model.ServerUrl) ? "bi-check-circle-fill text-success" : "bi-circle text-secondary")"></i>
+                        <span>API Server URL configured @(string.IsNullOrEmpty(Model.ServerUrl) ? "— missing" : "")</span>
+                    </div>
+                </div>
+
+                @if (!Model.IpxeEfiExists || !Model.WimbootExists)
+                {
+                    <div class="alert alert-secondary mb-3 p-2" style="font-size:.8rem">
+                        <strong>Step 1:</strong> Download binaries to <code style="word-break:break-all">@Model.TftpRootPath</code>
+                        by running on the server:
+                        <pre class="mb-0 mt-1 p-2 rounded" style="background:#0d1117;font-size:.72rem">Scripts\Get-IpxeBinaries.ps1</pre>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(Model.IpxeScript))
+                {
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span style="font-size:.8rem;color:#8b949e">Generated boot.ipxe (also served at <code>/boot.ipxe</code> on port 8080)</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                                    style="font-size:.72rem"
+                                    onclick="navigator.clipboard.writeText(this.closest('.mb-3').querySelector('pre').textContent)">
+                                <i class="bi bi-clipboard me-1"></i>Copy
+                            </button>
+                        </div>
+                        <pre class="p-2 rounded mb-0" style="background:#0d1117;font-size:.72rem;white-space:pre-wrap;word-break:break-all">@Model.IpxeScript</pre>
+                    </div>
+                }
+
+                <div class="text-secondary" style="font-size:.8rem">
+                    <strong>Step 2 — DHCP server:</strong> set option 66 (next-server) to this server's IP and
+                    option 67 (bootfile) to <code>ipxe-shim.efi</code> for UEFI Secure Boot clients.
+                    The installer pre-stages <code>autoexec.ipxe</code> in the TFTP root, which
+                    automatically chains iPXE to the HTTP boot script — no DHCP user-class
+                    policy is required.
+                </div>
+            </div>
+        </div>
+
+        @* Requirements card *@
+        <div class="card">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi bi-list-check"></i> Requirements
+            </div>
+            <div class="card-body p-0">
+                <ul class="list-group list-group-flush" style="font-size:.84rem">
+                    <li class="list-group-item bg-transparent d-flex align-items-start gap-2">
+                        <i class="bi @(Model.AdkDismPath != null ? "bi-check-circle-fill text-success" : "bi-circle text-secondary") mt-1"></i>
+                        <div>
+                            <strong>Windows ADK</strong> installed on this server
+                            @if (Model.AdkDismPath == null)
+                            {
+                                <div class="text-secondary" style="font-size:.78rem">
+                                    Install from:
+                                    <code style="font-size:.75rem">winget install Microsoft.WindowsADK</code>
+                                    <br />then also install the WinPE add-on:
+                                    <code style="font-size:.75rem">winget install Microsoft.ADKPEAddon</code>
+                                </div>
+                            }
+                        </div>
+                    </li>
+                    <li class="list-group-item bg-transparent d-flex align-items-start gap-2">
+                        <i class="bi @(Model.WimExists ? "bi-check-circle-fill text-success" : "bi-circle text-secondary") mt-1"></i>
+                        <div>
+                            <strong>boot.wim</strong> present at the configured path
+                            <div class="text-secondary" style="font-size:.78rem">
+                                Copy your customised WinPE <code>boot.wim</code> (with <code>Deploy\Start-OSDeploy.ps1</code> inside) to the TFTP root.
+                            </div>
+                        </div>
+                    </li>
+                    <li class="list-group-item bg-transparent d-flex align-items-start gap-2">
+                        <i class="bi @(!string.IsNullOrEmpty(Model.ServerUrl) ? "bi-check-circle-fill text-success" : "bi-circle text-secondary") mt-1"></i>
+                        <div>
+                            <strong>API Server URL</strong> configured in <a href="/Settings/Index">Settings</a>
+                        </div>
+                    </li>
+                    <li class="list-group-item bg-transparent d-flex align-items-start gap-2">
+                        <i class="bi @(Model.PasswordSet ? "bi-check-circle-fill text-success" : "bi-circle text-secondary") mt-1"></i>
+                        <div>
+                            <strong>WinPE local password</strong> configured in <a href="/Settings/Index">Settings</a>
+                        </div>
+                    </li>
+                    <li class="list-group-item bg-transparent d-flex align-items-start gap-2">
+                        <i class="bi bi-info-circle text-secondary mt-1"></i>
+                        <div>
+                            Service runs as <strong>Local System</strong> (or an account with local admin rights and write access to the TFTP root)
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+    </div>
+</div>

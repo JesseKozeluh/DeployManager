@@ -1,0 +1,147 @@
+@page
+@model DeployManager.Pages.Settings.SitesModel
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
+@{
+    ViewData["Title"] = "Sites"; ViewData["ActivePage"] = "Sites";
+    // No <form> on this page — the save is a JSON fetch — so the antiforgery
+    // token must be emitted explicitly for the JS to send as a header.
+    var antiforgeryToken = Antiforgery.GetAndStoreTokens(HttpContext).RequestToken;
+}
+
+@if (!string.IsNullOrEmpty(Model.SaveResult))
+{
+    <div class="alert @(Model.SaveOk ? "alert-success" : "alert-danger") alert-dismissible mb-4">
+        @Model.SaveResult
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center gap-2">
+        <i class="bi bi-map"></i> Site / Subnet Mapping
+        <button id="btnAdd" class="btn btn-sm btn-outline-primary ms-auto">
+            <i class="bi bi-plus-lg me-1"></i>Add site
+        </button>
+        <button id="btnSave" class="btn btn-sm btn-primary">
+            <i class="bi bi-check-circle me-1"></i>Save all
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0 align-middle" id="sitesTable">
+            <thead>
+                <tr>
+                    <th style="width:140px">Site name</th>
+                    <th style="width:140px">Subnet (CIDR)</th>
+                    <th>Target OU</th>
+                    <th style="width:195px">Timezone <span class="text-secondary" style="font-size:.75rem">(blank = default)</span></th>
+                    <th style="width:110px">Locale <span class="text-secondary" style="font-size:.75rem">(blank = default)</span></th>
+                    <th style="width:44px"></th>
+                </tr>
+            </thead>
+            <tbody id="sitesBody">
+            @for (int i = 0; i < Model.Sites.Count; i++)
+            {
+                var site = Model.Sites[i];
+                <tr>
+                    <td><input class="form-control form-control-sm font-monospace" value="@site.Name"     data-field="name"     /></td>
+                    <td><input class="form-control form-control-sm font-monospace" value="@site.Subnet"   data-field="subnet"   placeholder="10.0.1.0/24" /></td>
+                    <td><input class="form-control form-control-sm font-monospace" value="@site.OU"       data-field="ou"       /></td>
+                    <td><input class="form-control form-control-sm"               value="@site.Timezone"  data-field="timezone" placeholder="Eastern Standard Time" /></td>
+                    <td><input class="form-control form-control-sm"               value="@site.Locale"    data-field="locale"   placeholder="en-US" /></td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-outline-danger btn-delete" title="Remove">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (!Model.Sites.Any())
+        {
+            <p class="text-secondary p-3 mb-0">No sites configured. Add one above.</p>
+        }
+    </div>
+</div>
+
+<p class="text-secondary" style="font-size:.8rem">
+    <i class="bi bi-info-circle me-1"></i>
+    Subnet is matched against the machine's IP at PXE boot time. The matching site's OU and timezone
+    are embedded in the deployment job. Timezone must be a valid Windows timezone ID —
+    see <a href="https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/default-time-zones" target="_blank" class="text-secondary">reference</a>.
+</p>
+
+@section Scripts {
+<script>
+// Row template for "Add site"
+document.getElementById('btnAdd').addEventListener('click', function () {
+    const tbody = document.getElementById('sitesBody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td><input class="form-control form-control-sm font-monospace" value="" data-field="name" /></td>
+        <td><input class="form-control form-control-sm font-monospace" value="" data-field="subnet" placeholder="10.0.1.0/24" /></td>
+        <td><input class="form-control form-control-sm font-monospace" value="" data-field="ou" /></td>
+        <td><input class="form-control form-control-sm" value="" data-field="timezone" placeholder="Eastern Standard Time" /></td>
+        <td><input class="form-control form-control-sm" value="" data-field="locale" placeholder="en-US" /></td>
+        <td><button type="button" class="btn btn-sm btn-outline-danger btn-delete"><i class="bi bi-trash"></i></button></td>`;
+    tbody.appendChild(tr);
+    tr.querySelector('[data-field="name"]').focus();
+});
+
+// Delete row
+document.getElementById('sitesBody').addEventListener('click', function (e) {
+    const btn = e.target.closest('.btn-delete');
+    if (btn) btn.closest('tr').remove();
+});
+
+// Collect all rows into JSON and POST
+document.getElementById('btnSave').addEventListener('click', async function () {
+    const rows = [...document.querySelectorAll('#sitesBody tr')].map(tr => ({
+        name:     tr.querySelector('[data-field="name"]').value.trim(),
+        subnet:   tr.querySelector('[data-field="subnet"]').value.trim(),
+        ou:       tr.querySelector('[data-field="ou"]').value.trim(),
+        timezone: tr.querySelector('[data-field="timezone"]').value.trim(),
+        locale:   tr.querySelector('[data-field="locale"]').value.trim()
+    }));
+
+    function showBanner(ok, text) {
+        const banner = document.createElement('div');
+        banner.className = 'alert alert-' + (ok ? 'success' : 'danger') + ' alert-dismissible mb-0';
+        banner.innerHTML = text + ' <button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+        document.querySelector('.card').before(banner);
+        if (ok) setTimeout(() => banner.remove(), 3000);
+    }
+
+    try {
+        const resp = await fetch('?handler=Save', {
+            method:  'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': '@antiforgeryToken'
+            },
+            body: JSON.stringify(rows)
+        });
+
+        // A redirect means we were bounced (expired session, auth challenge) —
+        // the handler did NOT run, whatever the final status code says.
+        if (resp.redirected) {
+            showBanner(false, 'Save failed — your session may have expired. Reload the page and try again.');
+            return;
+        }
+        if (!resp.ok) {
+            showBanner(false, 'Save failed (HTTP ' + resp.status + '). Reload the page and try again.');
+            return;
+        }
+
+        const result = await resp.json();
+        if (result && result.ok) {
+            showBanner(true, 'Sites saved.');
+        } else {
+            showBanner(false, 'Save failed: ' + (result?.error ?? 'unexpected response.'));
+        }
+    } catch (e) {
+        showBanner(false, 'Save failed: ' + e.message);
+    }
+});
+</script>
+}

@@ -1,0 +1,87 @@
+@page
+@model DeployManager.Pages.Auth.ChecklistModel
+@{ ViewData["Title"] = "Getting Started"; Layout = null; }
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Getting Started — Deploy Manager</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="stylesheet" href="~/lib/bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.min.css" />
+    <style>
+        body { background:#0f1117; color:#c9d1d9; }
+        .wrap { max-width:680px; margin:3rem auto; padding:0 1rem; }
+        .card { background:#161b22; border:1px solid #30363d; border-radius:10px; margin-bottom:1rem; }
+        .card-body { padding:1rem 1.25rem; }
+        .step-done   { border-left:3px solid #238636; }
+        .step-todo   { border-left:3px solid #388bfd; }
+        .step-manual { border-left:3px solid #d29922; }
+        .check-icon  { font-size:1.1rem; width:1.5rem; flex-shrink:0; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="mb-4">
+        <svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" width="28" height="28" style="vertical-align:-.25em;margin-right:.5rem"><defs><linearGradient id="dm-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2d5f8a"/><stop offset="100%" stop-color="#58a6ff"/></linearGradient></defs><rect width="256" height="256" rx="42" fill="url(#dm-bg)"/><text x="128" y="176" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-weight="700" font-size="132" fill="#fff">DM</text></svg>
+        <span style="font-size:1.3rem;font-weight:700;color:#e6edf3">Deploy Manager</span>
+    </div>
+
+    <h1 style="font-size:1.3rem;font-weight:700;color:#e6edf3" class="mb-1">
+        <i class="bi bi-list-check text-primary me-2"></i>Getting Started
+    </h1>
+    <p class="text-secondary mb-4">Setup is complete. Work through the steps below to finish configuring your deployment server.</p>
+
+    @if (Model.AllDone)
+    {
+        <div class="alert alert-success d-flex align-items-center gap-2 mb-4">
+            <i class="bi bi-check-circle-fill"></i>
+            <span>All steps complete — your deployment server is ready.</span>
+        </div>
+    }
+
+    @foreach (var item in Model.Items)
+    {
+        var cardClass = item.Done ? "step-done" : (item.ActionUrl == null ? "step-manual" : "step-todo");
+        <div class="card @cardClass">
+            <div class="card-body d-flex align-items-start gap-3">
+                <div class="check-icon mt-1">
+                    @if (item.Done)
+                    {
+                        <i class="bi bi-check-circle-fill text-success"></i>
+                    }
+                    else if (item.ActionUrl == null)
+                    {
+                        <i class="bi bi-exclamation-circle-fill text-warning"></i>
+                    }
+                    else
+                    {
+                        <i class="bi bi-circle text-primary"></i>
+                    }
+                </div>
+                <div class="flex-grow-1">
+                    <div class="fw-semibold @(item.Done ? "text-secondary" : "")">@item.Label</div>
+                    @if (!string.IsNullOrEmpty(item.Note))
+                    {
+                        <div class="text-secondary mt-1" style="font-size:.82rem">@item.Note</div>
+                    }
+                    @if (!item.Done && item.ActionUrl != null)
+                    {
+                        <a href="@item.ActionUrl" class="btn btn-sm btn-outline-primary mt-2">
+                            <i class="bi bi-arrow-right me-1"></i>@item.ActionLabel
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    <div class="mt-4 d-flex gap-3">
+        <a href="/" class="btn btn-primary"><i class="bi bi-speedometer2 me-1"></i>Go to Dashboard</a>
+        <a href="/Settings/Index" class="btn btn-outline-secondary">Settings</a>
+    </div>
+    <p class="text-secondary mt-3" style="font-size:.75rem">You can return to this checklist any time at <code>/Auth/Checklist</code>.</p>
+</div>
+<script src="~/lib/bootstrap/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

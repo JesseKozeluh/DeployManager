@@ -1,0 +1,138 @@
+@page
+@model DeployManager.Pages.Packages.IndexModel
+@{ ViewData["Title"] = "Software Packages"; ViewData["ActivePage"] = "Packages"; }
+
+<div class="d-flex justify-content-end mb-3">
+    <a asp-page="Upsert" class="btn btn-primary"><i class="bi bi-plus me-1"></i>Create Package</a>
+</div>
+
+@if (!Model.Packages.Any())
+{
+    <div class="card">
+        <div class="p-4 text-center">
+            <i class="bi bi-box-seam text-secondary" style="font-size:2rem"></i>
+            <p class="text-secondary mt-2 mb-1">No packages yet.</p>
+            <p class="text-secondary" style="font-size:.85rem">
+                A package is a named collection of software items installed in order during imaging.
+                <a asp-page="/Software/Index">Add software</a> first, then create a package.
+            </p>
+            <a asp-page="Upsert" class="btn btn-sm btn-primary mt-1">
+                <i class="bi bi-plus me-1"></i>Create Package
+            </a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="row g-3">
+    @foreach (var pkg in Model.Packages)
+    {
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0"><i class="bi bi-box-seam me-2 text-primary"></i>@pkg.Name</h6>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown">
+                                <i class="bi bi-three-dots"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" asp-page="Upsert" asp-route-id="@pkg.Id"><i class="bi bi-pencil me-2"></i>Edit</a></li>
+                                <li>
+                                    <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#dupModal"
+                                            data-id="@pkg.Id" data-name="@pkg.Name" data-desc="@pkg.Description">
+                                        <i class="bi bi-files me-2"></i>Duplicate
+                                    </button>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <form method="post" asp-page-handler="Delete" asp-route-id="@pkg.Id">
+                                        <button type="button" class="dropdown-item text-danger"
+                                                data-dm-confirm="Delete package '@Html.Raw(pkg.Name)'? This cannot be undone."
+                                                data-dm-ok="Delete package">
+                                            <i class="bi bi-trash me-2"></i>Delete
+                                        </button>
+                                    </form>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(pkg.Description))
+                    {
+                        <p class="text-secondary mb-2" style="font-size:.8rem">@pkg.Description</p>
+                    }
+                    <div class="mt-2">
+                        @foreach (var swId in pkg.SoftwareIds)
+                        {
+                            var sw = Model.SoftwareLookup.GetValueOrDefault(swId);
+                            <span class="badge bg-secondary me-1 mb-1">@(sw?.Name ?? swId)</span>
+                        }
+                        @if (!pkg.SoftwareIds.Any())
+                        {
+                            <span class="text-secondary" style="font-size:.8rem">No software added</span>
+                        }
+                    </div>
+                </div>
+                <div class="card-footer d-flex justify-content-between align-items-center">
+                    <span class="text-secondary" style="font-size:.75rem">@pkg.SoftwareIds.Count item(s)</span>
+                    <a asp-page="/Deploy/Index" asp-route-packageId="@pkg.Id" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-play me-1"></i>Deploy
+                    </a>
+                </div>
+            </div>
+        </div>
+    }
+    </div>
+}
+
+<!-- Duplicate package modal -->
+<div class="modal fade" id="dupModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" asp-page-handler="Duplicate">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-files me-2"></i>Duplicate package</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="id" id="dupSourceId" />
+                    <p class="text-secondary" style="font-size:.85rem">
+                        Copies all software items from <strong id="dupSourceName"></strong> into a new package.
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label">New package name <span class="text-danger">*</span></label>
+                        <input name="name" id="dupName" class="form-control" required autocomplete="off" />
+                    </div>
+                    <div class="mb-1">
+                        <label class="form-label">Description <span class="text-secondary">(optional)</span></label>
+                        <input name="description" id="dupDesc" class="form-control" autocomplete="off" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-link" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-files me-1"></i>Duplicate</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        var dupModal = document.getElementById('dupModal');
+        if (dupModal) {
+            dupModal.addEventListener('show.bs.modal', function (ev) {
+                var btn  = ev.relatedTarget;
+                var name = btn.getAttribute('data-name') || '';
+                document.getElementById('dupSourceId').value   = btn.getAttribute('data-id') || '';
+                document.getElementById('dupSourceName').textContent = name;
+                document.getElementById('dupName').value        = 'Copy of ' + name;
+                document.getElementById('dupDesc').value        = btn.getAttribute('data-desc') || '';
+            });
+            dupModal.addEventListener('shown.bs.modal', function () {
+                var n = document.getElementById('dupName');
+                n.focus(); n.select();
+            });
+        }
+    </script>
+}

@@ -1,0 +1,258 @@
+@page
+@model DeployManager.Pages.Deploy.IndexModel
+@{ ViewData["Title"] = "New Deployment"; ViewData["ActivePage"] = "Deploy"; }
+
+@if (Model.PreflightErrors.Any())
+{
+    <div class="alert alert-danger alert-dismissible mb-3" role="alert">
+        <strong><i class="bi bi-x-octagon me-1"></i>Pre-flight check failed — job not saved:</strong>
+        <ul class="mb-0 mt-1">
+            @foreach (var e in Model.PreflightErrors) { <li>@e</li> }
+        </ul>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (Model.PreflightWarnings.Any())
+{
+    <div class="alert alert-warning alert-dismissible mb-3" role="alert">
+        <strong><i class="bi bi-exclamation-triangle me-1"></i>Warning:</strong>
+        <ul class="mb-0 mt-1">
+            @foreach (var w in Model.PreflightWarnings) { <li>@w</li> }
+        </ul>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (Model.Result != null)
+{
+    <div class="alert @(Model.Result.Value.Success ? "alert-success" : "alert-danger") alert-dismissible" role="alert">
+        @Model.Result.Value.Message
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="row g-4">
+<div class="col-lg-7">
+<div class="card">
+<div class="card-header">Deployment Configuration</div>
+<div class="card-body">
+<form method="post">
+
+    <div class="mb-4">
+        <label class="form-label fw-semibold">Target Machine <span class="text-danger">*</span></label>
+        <select name="MachineId" class="form-select" id="machineSelect" required>
+            <option value="">— Select machine —</option>
+            @foreach (var m in Model.Machines)
+            {
+                if (Model.SelectedMachineId == m.Id)
+                {
+                    <option value="@m.Id" selected
+                            data-mac="@m.MacAddress" data-hostname="@m.Hostname"
+                            data-site="@m.Site" data-ou="@m.OU" data-ip="@m.IpAddress">
+                        @m.Hostname — @m.MacAddress (@m.Site)
+                    </option>
+                }
+                else
+                {
+                    <option value="@m.Id"
+                            data-mac="@m.MacAddress" data-hostname="@m.Hostname"
+                            data-site="@m.Site" data-ou="@m.OU" data-ip="@m.IpAddress">
+                        @m.Hostname — @m.MacAddress (@m.Site)
+                    </option>
+                }
+            }
+        </select>
+        <div class="form-text">
+            Machine not listed? <a asp-page="/Machines/Upsert">Add it first.</a>
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label fw-semibold">Device Name <span class="text-danger">*</span></label>
+        <input name="DeviceName" id="deviceName" class="form-control font-monospace"
+               placeholder="@(Model.ComputerPrefix)ABCDE" maxlength="15"
+               pattern="[A-Za-z0-9\-]+" required
+               value="@Model.DeviceName" />
+        <div class="form-text">Max 15 chars, letters/numbers/hyphens only</div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-5">
+            <label class="form-label fw-semibold">Site <span class="text-danger">*</span></label>
+            <select name="Site" id="siteSelect" class="form-select" required>
+                <option value="">— Select —</option>
+                @foreach (var site in Model.Sites)
+                {
+                    if (Model.Site == site.Name)
+                    { <option value="@site.Name" data-ou="@site.OU" selected>@site.Name</option> }
+                    else
+                    { <option value="@site.Name" data-ou="@site.OU">@site.Name</option> }
+                }
+            </select>
+        </div>
+        <div class="col-md-7" id="ouGroup">
+            <label class="form-label fw-semibold">OU</label>
+            <input name="OU" id="ouInput" class="form-control font-monospace"
+                   value="@Model.OU" placeholder="Auto-filled from site" />
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-5">
+            <label class="form-label fw-semibold">Join Mode</label>
+            <select name="JoinMode" id="joinModeSelect" class="form-select">
+                <option value="domain">Domain Join</option>
+                <option value="workgroup">Workgroup (Autopilot)</option>
+            </select>
+        </div>
+        <div class="col-md-7" id="workgroupGroup" style="display:none">
+            <label class="form-label fw-semibold">Workgroup Name</label>
+            <input name="Workgroup" id="workgroupInput" class="form-control font-monospace"
+                   value="WORKGROUP" maxlength="15" pattern="[A-Za-z0-9\-]+" />
+            <div class="form-text">Machine joins this workgroup and boots to OOBE for Autopilot enrollment.</div>
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label fw-semibold">Windows Image <span class="text-danger">*</span></label>
+        <select name="WimName" class="form-select" required>
+            <option value="">— Select WIM —</option>
+            @foreach (var wim in Model.Wims)
+            {
+                if (Model.WimName == wim.RelativePath)
+                { <option value="@wim.RelativePath" selected>@wim.Name</option> }
+                else
+                { <option value="@wim.RelativePath">@wim.Name</option> }
+            }
+        </select>
+        @if (!Model.Wims.Any())
+        {
+            <div class="form-text text-warning">No WIM images registered. Add one under <a asp-page="/Images/Index">WIM Images</a>.</div>
+        }
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label fw-semibold">Software Package</label>
+        <select name="PackageId" class="form-select">
+            <option value="">— None (OS only) —</option>
+            @foreach (var pkg in Model.Packages)
+            {
+                if (Model.SelectedPackageId == pkg.Id)
+                { <option value="@pkg.Id" selected>@pkg.Name (@pkg.SoftwareIds.Count items)</option> }
+                else
+                { <option value="@pkg.Id">@pkg.Name (@pkg.SoftwareIds.Count items)</option> }
+            }
+        </select>
+    </div>
+
+    <div class="mb-4">
+        <label class="form-label fw-semibold">Driver Package</label>
+        <select name="DriverPackageId" class="form-select">
+            <option value="">— None —</option>
+            @foreach (var drv in Model.DriverPackages)
+            {
+                if (Model.SelectedDriverPackageId == drv.Id)
+                { <option value="@drv.Id" selected>@drv.Name</option> }
+                else
+                { <option value="@drv.Id">@drv.Name</option> }
+            }
+        </select>
+        @if (!Model.DriverPackages.Any())
+        {
+            <div class="form-text text-secondary">No driver packages configured. <a asp-page="/Drivers/Index">Add one under Drivers.</a></div>
+        }
+        else
+        {
+            <div class="form-text">Drivers are installed via UNC share after OS deployment.</div>
+        }
+    </div>
+
+    <div class="border-top border-secondary pt-3 mt-2">
+        <div class="d-flex gap-2 flex-wrap">
+            <button type="submit" name="action" value="deploy" class="btn btn-outline-primary">
+                <i class="bi bi-file-earmark-check me-1"></i>Save Job Only
+            </button>
+            <button type="submit" name="action" value="pxeboot" class="btn btn-success">
+                <i class="bi bi-lightning-charge-fill me-1"></i>Save Job + PXE Reboot
+            </button>
+            <button type="submit" name="action" value="stage" class="btn btn-primary">
+                <i class="bi bi-hdd-network me-1"></i>Save Job + Pre-stage Reboot
+            </button>
+        </div>
+        <div class="text-secondary mt-2" style="font-size:.8rem">
+            <strong>Save Job Only</strong> — writes the job file. Machine picks it up next time it PXE boots.<br>
+            <strong>Save Job + PXE Reboot</strong> — writes job and reboots the machine into network PXE. Best for bare-metal on the LAN (needs the machine online).<br>
+            <strong>Save Job + Pre-stage Reboot</strong> — for re-imaging an <em>existing</em> Windows machine, including remote/interstate sites. Stages WinPE to the local disk over HTTP (resumable) and reboots into it using the machine's own Microsoft-signed boot manager — no PXE, no TFTP, Secure-Boot-clean. Machine must be online and domain-reachable.<br>
+            Need to wake an offline machine first? Use the <a asp-page="/Machines/Index" class="text-secondary">Machines page</a>.
+        </div>
+    </div>
+
+</form>
+</div>
+</div>
+</div>
+
+<div class="col-lg-5">
+    <div class="card mb-3" id="machineInfo" style="display:none">
+        <div class="card-header"><i class="bi bi-pc-display me-2"></i>Selected Machine</div>
+        <div class="card-body" style="font-size:.875rem">
+            <table class="table table-sm mb-0">
+                <tr><td class="text-secondary">Hostname</td><td id="infoHostname" class="fw-semibold"></td></tr>
+                <tr><td class="text-secondary">MAC</td><td><code id="infoMac"></code></td></tr>
+                <tr><td class="text-secondary">IP</td><td><code id="infoIp"></code></td></tr>
+                <tr><td class="text-secondary">Site</td><td id="infoSite"></td></tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><i class="bi bi-info-circle me-2"></i>How it works</div>
+        <div class="card-body text-secondary" style="font-size:.8rem;line-height:1.6">
+            <ol class="ps-3 mb-0">
+                <li>Job written to <code>HTTP/jobs/{mac}.json</code></li>
+                <li>Machine PXE boots (via WoL + PXE Reboot or manually)</li>
+                <li>WinPE reads job — no prompts, fully automatic</li>
+                <li>Windows applied, joined to domain or workgroup, named correctly</li>
+                <li>SetupComplete installs software package</li>
+                <li>Machine arrives at login screen, ready for staff</li>
+            </ol>
+        </div>
+    </div>
+</div>
+</div>
+
+@section Scripts {
+<script>
+const siteOUs = {};
+@foreach (var site in Model.Sites)
+{
+    <text>siteOUs['@site.Name'] = '@Html.Raw(site.OU)';</text>
+}
+
+document.getElementById('machineSelect').addEventListener('change', function() {
+    const opt = this.options[this.selectedIndex];
+    if (!opt.value) { document.getElementById('machineInfo').style.display = 'none'; return; }
+    document.getElementById('infoHostname').textContent = opt.dataset.hostname;
+    document.getElementById('infoMac').textContent      = opt.dataset.mac;
+    document.getElementById('infoIp').textContent       = opt.dataset.ip || '—';
+    document.getElementById('infoSite').textContent     = opt.dataset.site;
+    document.getElementById('machineInfo').style.display = '';
+
+    if (opt.dataset.hostname) document.getElementById('deviceName').value = opt.dataset.hostname;
+    if (opt.dataset.site)     document.getElementById('siteSelect').value  = opt.dataset.site;
+    if (opt.dataset.ou)       document.getElementById('ouInput').value     = opt.dataset.ou;
+});
+
+document.getElementById('siteSelect').addEventListener('change', function() {
+    document.getElementById('ouInput').value = siteOUs[this.value] || '';
+});
+
+document.getElementById('joinModeSelect').addEventListener('change', function() {
+    const wg = this.value === 'workgroup';
+    document.getElementById('ouGroup').style.display        = wg ? 'none' : '';
+    document.getElementById('workgroupGroup').style.display  = wg ? '' : 'none';
+});
+
+if (document.getElementById('machineSelect').value)
+    document.getElementById('machineSelect').dispatchEvent(new Event('change'));
+</script>
+}

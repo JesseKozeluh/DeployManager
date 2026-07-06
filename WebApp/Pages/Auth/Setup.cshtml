@@ -1,0 +1,118 @@
+@page
+@model DeployManager.Pages.Auth.SetupModel
+@{ ViewData["Title"] = "Setup"; Layout = null; }
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>First-run Setup — Deploy Manager</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.min.css" />
+    <style>
+        body { background:#0f1117; color:#c9d1d9; }
+        .setup-wrap { max-width:700px; margin:3rem auto; padding:0 1rem; }
+        .card { background:#161b22; border:1px solid #30363d; border-radius:10px; margin-bottom:1.5rem; }
+        .card-header { background:#21262d; border-bottom:1px solid #30363d; font-weight:600; padding:.75rem 1.25rem; }
+        .form-control, .form-select { background:#0d1117; border-color:#30363d; color:#c9d1d9; }
+        .form-control:focus, .form-select:focus { background:#0d1117; border-color:#58a6ff; color:#e6edf3; box-shadow:0 0 0 3px rgba(88,166,255,.15); }
+        .btn-primary { background:#238636; border-color:#238636; }
+        h2 { color:#58a6ff; font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; margin-bottom:0; }
+    </style>
+</head>
+<body>
+<div class="setup-wrap">
+    <h1 class="mb-1" style="font-size:1.4rem; font-weight:700">
+        <i class="bi bi-hdd-network text-primary me-2"></i>Deploy Manager — First-run Setup
+    </h1>
+    <p class="text-secondary mb-4">Fill in your environment details. You can change everything later in Settings.</p>
+
+    @if (!string.IsNullOrEmpty(Model.Error))
+    {
+        <div class="alert alert-danger">@Model.Error</div>
+    }
+
+    <form method="post">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-building me-2"></i>Organisation</div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Organisation name</label>
+                    <input name="OrgName" class="form-control" value="@Model.Cfg.OrgName" placeholder="Contoso IT" required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Computer name prefix</label>
+                    <input name="ComputerPrefix" class="form-control" value="@Model.Cfg.ComputerPrefix" placeholder="CORP-" />
+                    <div class="form-text">Prefix suggested when creating a deployment job (e.g. CORP-ABCDE).</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><i class="bi bi-server me-2"></i>Server URLs</div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Static file server URL <span class="text-danger">*</span></label>
+                    <input name="DeployServerUrl" class="form-control font-monospace" value="@Model.Cfg.DeployServerUrl"
+                           placeholder="http://192.168.1.10:8080" required />
+                    <div class="form-text">Serves WIM images and job files (port 8080).</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">API server URL <span class="text-danger">*</span></label>
+                    <input name="ApiServerUrl" class="form-control font-monospace" value="@Model.Cfg.ApiServerUrl"
+                           placeholder="http://192.168.1.10:8090" required />
+                    <div class="form-text">This web app (port 8090).</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><i class="bi bi-diagram-3 me-2"></i>Active Directory</div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Domain FQDN <span class="text-danger">*</span></label>
+                    <input name="DomainFqdn" class="form-control font-monospace" value="@Model.Cfg.DomainFqdn"
+                           placeholder="corp.contoso.com" required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Default computer OU</label>
+                    <input name="DefaultComputerOU" class="form-control font-monospace" value="@Model.Cfg.DefaultComputerOU"
+                           placeholder="OU=Computers,DC=corp,DC=contoso,DC=com" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Default timezone</label>
+                    <input name="DefaultTimezone" class="form-control" value="@Model.Cfg.DefaultTimezone"
+                           placeholder="Eastern Standard Time" />
+                    <div class="form-text">Windows timezone ID. Applied when no per-site timezone is set.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><i class="bi bi-person-lock me-2"></i>Breakglass admin password</div>
+            <div class="card-body">
+                <p class="text-secondary" style="font-size:.85rem">
+                    This password is always available at <code>/auth/login</code> regardless of other auth settings.
+                    Keep it somewhere safe.
+                </p>
+                <div class="mb-3">
+                    <label class="form-label">Password <span class="text-danger">*</span></label>
+                    <input type="password" name="BreakglassPassword" class="form-control" required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Confirm password <span class="text-danger">*</span></label>
+                    <input type="password" name="BreakglassConfirm" class="form-control" required />
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg w-100">
+            <i class="bi bi-check-circle me-2"></i>Complete Setup
+        </button>
+        <p class="text-secondary mt-3" style="font-size:.8rem">
+            Sites, WinPE credentials, and Entra auth can be configured in Settings after setup.
+        </p>
+    </form>
+</div>
+<script src="~/lib/bootstrap/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

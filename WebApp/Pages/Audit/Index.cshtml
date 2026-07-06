@@ -1,0 +1,142 @@
+@page
+@model DeployManager.Pages.Audit.IndexModel
+@{ ViewData["Title"] = "Audit Log"; ViewData["ActivePage"] = "Audit"; }
+
+<div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span><i class="bi bi-journal-text me-2"></i>Audit Log</span>
+        <div class="d-flex align-items-center gap-2 ms-auto">
+            <span class="text-secondary" style="font-size:.8rem">
+                @if (Model.HasFilter)
+                {
+                    <span>@Model.TotalMatched match@(Model.TotalMatched == 1 ? "" : "es") (showing @Model.Entries.Count)</span>
+                }
+                else if (Model.LogExists)
+                {
+                    <span>Showing @Model.Entries.Count entries (newest first)</span>
+                }
+            </span>
+            <a asp-page="/Audit/Index" asp-page-handler="Export"
+               asp-route-FilterAction="@Model.FilterAction"
+               asp-route-FilterActor="@Model.FilterActor"
+               asp-route-FilterResult="@Model.FilterResult"
+               asp-route-FilterDateFrom="@Model.FilterDateFrom"
+               asp-route-FilterDateTo="@Model.FilterDateTo"
+               class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-download me-1"></i>Export CSV
+            </a>
+        </div>
+    </div>
+
+    @* Filter bar *@
+    <div style="background:#0d1117;border-bottom:1px solid #30363d;padding:.75rem 1rem">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label mb-1" style="font-size:.75rem;color:#8b949e">Action</label>
+                <input type="text" name="FilterAction" value="@Model.FilterAction" class="form-control form-control-sm"
+                       placeholder="e.g. login" autocomplete="off" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1" style="font-size:.75rem;color:#8b949e">Actor</label>
+                <input type="text" name="FilterActor" value="@Model.FilterActor" class="form-control form-control-sm"
+                       placeholder="Username" autocomplete="off" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1" style="font-size:.75rem;color:#8b949e">Result</label>
+                <select name="FilterResult" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    @{ var selSuccess = Model.FilterResult == "success"; }
+                    @{ var selFail    = Model.FilterResult == "fail"; }
+                    <option value="success" selected="@selSuccess">Success</option>
+                    <option value="fail"    selected="@selFail">Fail</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1" style="font-size:.75rem;color:#8b949e">From</label>
+                <input type="date" name="FilterDateFrom" value="@Model.FilterDateFrom" class="form-control form-control-sm" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1" style="font-size:.75rem;color:#8b949e">To</label>
+                <input type="date" name="FilterDateTo" value="@Model.FilterDateTo" class="form-control form-control-sm" />
+            </div>
+            <div class="col-md-1 d-flex gap-1">
+                <button type="submit" class="btn btn-sm btn-primary flex-grow-1" title="Apply filter">
+                    <i class="bi bi-search"></i>
+                </button>
+                @if (Model.HasFilter)
+                {
+                    <a asp-page="/Audit/Index" class="btn btn-sm btn-outline-secondary" title="Clear filters">
+                        <i class="bi bi-x-lg"></i>
+                    </a>
+                }
+            </div>
+        </form>
+    </div>
+
+    <div class="card-body p-0">
+        @if (!Model.LogExists)
+        {
+            <div class="p-4 text-center">
+                <i class="bi bi-journal text-secondary" style="font-size:2rem"></i>
+                <p class="text-secondary mt-2 mb-0">No audit log yet. Actions such as logins, deployments, and settings changes will appear here.</p>
+            </div>
+        }
+        else if (!Model.Entries.Any())
+        {
+            <div class="p-4 text-center">
+                <i class="bi bi-funnel text-secondary" style="font-size:2rem"></i>
+                <p class="text-secondary mt-2 mb-0">No entries match the current filter.</p>
+                <a asp-page="/Audit/Index" class="btn btn-sm btn-outline-secondary mt-3">Clear filters</a>
+            </div>
+        }
+        else
+        {
+            <div style="overflow-x:auto">
+            <table class="table table-hover mb-0" style="font-size:.82rem">
+                <thead>
+                    <tr>
+                        <th style="width:160px">Timestamp</th>
+                        <th style="width:80px">Result</th>
+                        <th>Action</th>
+                        <th>Actor</th>
+                        <th>Detail</th>
+                        <th>Source IP</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var e in Model.Entries)
+                {
+                    DateTimeOffset.TryParse(e.Timestamp, out var ts);
+                    <tr>
+                        <td class="text-secondary font-monospace" style="white-space:nowrap;font-size:.75rem">@ts.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        <td>
+                            @if (e.Success)
+                            {
+                                <span class="badge rounded-pill badge-complete">OK</span>
+                            }
+                            else
+                            {
+                                <span class="badge rounded-pill badge-error">FAIL</span>
+                            }
+                        </td>
+                        <td class="font-monospace" style="white-space:nowrap">@e.Action</td>
+                        <td>@e.Actor</td>
+                        <td class="text-secondary">@e.Detail</td>
+                        <td class="text-secondary font-monospace" style="font-size:.75rem">@e.SourceIp</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+            </div>
+        }
+    </div>
+
+    @if (Model.LogExists && Model.TotalMatched > 500)
+    {
+        <div class="card-footer text-secondary" style="font-size:.8rem;background:#0d1117;border-top:1px solid #30363d">
+            <i class="bi bi-info-circle me-1"></i>
+            Showing newest 500 of @Model.TotalMatched matching entries.
+            Use <strong>Export CSV</strong> to download all @Model.TotalMatched records.
+        </div>
+    }
+</div>

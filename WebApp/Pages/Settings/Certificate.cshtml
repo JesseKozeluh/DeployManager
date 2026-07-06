@@ -1,0 +1,175 @@
+@page
+@model DeployManager.Pages.Settings.CertificateModel
+@{
+    ViewData["Title"] = "TLS Certificate";
+    ViewData["ActivePage"] = "Certificate";
+    var i = Model.Info;
+    var expiringSoon = i.DaysRemaining <= 30;
+}
+
+<div class="d-flex align-items-center mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-shield-lock me-2"></i>TLS Certificate</h1>
+    <a asp-page="Index" class="btn btn-outline-secondary btn-sm ms-auto">
+        <i class="bi bi-arrow-left me-1"></i>Back to Settings
+    </a>
+</div>
+
+@if (Model.Result is { } r)
+{
+    <div class="alert @(r.Ok ? "alert-success" : "alert-danger")" role="alert">
+        <i class="bi @(r.Ok ? "bi-check-circle-fill" : "bi-exclamation-triangle-fill") me-1"></i>@r.Message
+    </div>
+}
+
+<!-- ── Current certificate ─────────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header d-flex align-items-center">
+        <i class="bi bi-patch-check me-2"></i>Current certificate
+        @if (i.IsSelfSigned)
+        {
+            <span class="badge bg-warning text-dark ms-2"><i class="bi bi-exclamation-triangle me-1"></i>Self-signed</span>
+        }
+        else
+        {
+            <span class="badge bg-success ms-2"><i class="bi bi-check-circle me-1"></i>CA-signed</span>
+        }
+        @if (expiringSoon)
+        {
+            <span class="badge bg-danger ms-2">Expires in @i.DaysRemaining day(s)</span>
+        }
+    </div>
+    <div class="card-body">
+        <dl class="row mb-0">
+            <dt class="col-sm-3">Subject</dt>      <dd class="col-sm-9"><code>@i.Subject</code></dd>
+            <dt class="col-sm-3">Issuer</dt>       <dd class="col-sm-9"><code>@i.Issuer</code></dd>
+            <dt class="col-sm-3">Subject Alt Names</dt>
+            <dd class="col-sm-9">
+                @if (i.SubjectAltNames.Length == 0) { <span class="text-muted">none</span> }
+                else { foreach (var s in i.SubjectAltNames) { <span class="badge bg-light text-dark border me-1">@s</span> } }
+            </dd>
+            <dt class="col-sm-3">Valid</dt>
+            <dd class="col-sm-9">@i.NotBefore.ToString("yyyy-MM-dd") → @i.NotAfter.ToString("yyyy-MM-dd")
+                <span class="text-muted">(@i.DaysRemaining days left)</span></dd>
+            <dt class="col-sm-3">Thumbprint</dt>   <dd class="col-sm-9"><code class="small">@i.Thumbprint</code></dd>
+        </dl>
+        @if (i.IsSelfSigned)
+        {
+            <div class="form-text mt-2">
+                <i class="bi bi-info-circle me-1"></i>Self-signed certificates trigger browser warnings. Generate a
+                signing request below and have it signed by your CA (e.g. AD Certificate Services) for a trusted certificate.
+            </div>
+        }
+    </div>
+</div>
+
+<!-- ── Step 1: generate signing request ────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header"><i class="bi bi-1-circle me-2"></i>Generate signing request (CSR)</div>
+    <div class="card-body">
+        <form method="post" asp-page-handler="Generate">
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <label class="form-label">Common Name (CN)</label>
+                    <input class="form-control" asp-for="CommonName" placeholder="deploymentmanager.example.com" />
+                    <div class="form-text">The primary hostname clients use to reach this server.</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Key size</label>
+                    <select class="form-select" asp-for="KeySize">
+                        <option value="4096">4096-bit (recommended)</option>
+                        <option value="2048">2048-bit</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">SAN — DNS names</label>
+                    <textarea class="form-control" rows="3" asp-for="SanDnsNames"
+                              placeholder="deploymentmanager.example.com&#10;host.example.com&#10;localhost"></textarea>
+                    <div class="form-text">One per line. Include every name used in URLs.</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">SAN — IP addresses</label>
+                    <textarea class="form-control" rows="3" asp-for="SanIpAddresses"
+                              placeholder="192.168.1.10"></textarea>
+                    <div class="form-text">One per line. Needed if anyone connects by IP (e.g. WinPE).</div>
+                </div>
+                <div class="col-md-3"><label class="form-label">Organisation (O)</label><input class="form-control" asp-for="Org" /></div>
+                <div class="col-md-3"><label class="form-label">Org. Unit (OU)</label><input class="form-control" asp-for="Ou" /></div>
+                <div class="col-md-2"><label class="form-label">Locality (L)</label><input class="form-control" asp-for="Locality" /></div>
+                <div class="col-md-2"><label class="form-label">State (S)</label><input class="form-control" asp-for="State" /></div>
+                <div class="col-md-2"><label class="form-label">Country (C)</label><input class="form-control" asp-for="Country" maxlength="2" placeholder="AU" /></div>
+            </div>
+            <button type="submit" class="btn btn-primary mt-3">
+                <i class="bi bi-file-earmark-plus me-1"></i>Generate CSR
+            </button>
+            @if (Model.PendingCsr != null)
+            {
+                <span class="text-warning ms-2"><i class="bi bi-exclamation-triangle me-1"></i>A pending request already exists — generating a new one replaces it.</span>
+            }
+        </form>
+    </div>
+</div>
+
+@if (Model.PendingCsr != null)
+{
+    <!-- ── Step 2 & 3: sign externally, then install ───────────────────── -->
+    <div class="card mb-4 border-primary">
+        <div class="card-header bg-primary text-white"><i class="bi bi-2-circle me-2"></i>Pending request — sign it on your CA</div>
+        <div class="card-body">
+            <p class="mb-2">Download or copy this CSR, sign it on your CA, then paste the issued certificate below.</p>
+            <pre id="csrText" class="bg-light border rounded p-2 small" style="max-height:220px;overflow:auto;">@Model.PendingCsr</pre>
+            <div class="mb-3">
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyCsr()"><i class="bi bi-clipboard me-1"></i>Copy</button>
+                <a class="btn btn-outline-secondary btn-sm" asp-page-handler="DownloadCsr"><i class="bi bi-download me-1"></i>Download deploymgr.csr</a>
+            </div>
+            <details class="mb-3">
+                <summary class="text-muted small">How to sign on AD Certificate Services</summary>
+                <div class="small mt-2">
+                    <strong>certreq</strong> (from any domain machine):
+                    <pre class="bg-light border rounded p-2">certreq -submit -config "CA-FQDN\CA Common Name" -attrib "CertificateTemplate:WebServer" deploymgr.csr deploymgr.cer</pre>
+                    or use the CA web enrollment page <code>https://your-ca/certsrv</code> → advanced request → submit the CSR → Web Server template.
+                    Also export the CA root (and any intermediate) as Base64 for the chain field below.
+                </div>
+            </details>
+        </div>
+        <div class="card-header"><i class="bi bi-3-circle me-2"></i>Install signed certificate</div>
+        <div class="card-body">
+            <form method="post" asp-page-handler="Install">
+                <div class="mb-3">
+                    <label class="form-label">Signed certificate (PEM / Base64 .cer)</label>
+                    <textarea class="form-control font-monospace small" rows="6" asp-for="CertPem"
+                              placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">CA chain — intermediate + root (optional, PEM)</label>
+                    <textarea class="form-control font-monospace small" rows="5" asp-for="ChainPem"
+                              placeholder="Paste intermediate and/or root certificates (PEM). Improves trust on clients that don't already have the chain."></textarea>
+                </div>
+                <button type="submit" class="btn btn-success"><i class="bi bi-shield-check me-1"></i>Install certificate</button>
+            </form>
+        </div>
+    </div>
+}
+
+<!-- ── Revert ──────────────────────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header"><i class="bi bi-arrow-counterclockwise me-2"></i>Reset</div>
+    <div class="card-body">
+        <form method="post" asp-page-handler="Revert">
+            <p class="mb-2 text-muted small">Discards the current certificate and any pending request, and generates a new self-signed certificate.</p>
+            <button type="button" class="btn btn-outline-danger btn-sm"
+                    data-dm-confirm="Replace the current certificate with a freshly generated self-signed one? Clients will need to trust the new certificate."
+                    data-dm-ok="Revert" data-dm-class="btn btn-danger">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>Revert to self-signed
+            </button>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function copyCsr() {
+            var t = document.getElementById('csrText').innerText;
+            navigator.clipboard.writeText(t);
+        }
+    </script>
+}

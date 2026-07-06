@@ -1,0 +1,97 @@
+@page
+@model DeployManager.Pages.Auth.LoginModel
+@{ ViewData["Title"] = "Sign in"; Layout = null; }
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sign in — Deploy Manager</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.min.css" />
+    <style>
+        body { background:#0f1117; display:flex; justify-content:center; align-items:center; min-height:100vh; }
+        .login-card { background:#161b22; border:1px solid #30363d; border-radius:12px; padding:2.5rem; width:100%; max-width:380px; }
+        .login-card h1 { color:#58a6ff; font-size:1.1rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
+        .form-control { background:#0d1117; border-color:#30363d; color:#c9d1d9; }
+        .form-control:focus { background:#0d1117; border-color:#58a6ff; color:#e6edf3; box-shadow:0 0 0 3px rgba(88,166,255,.15); }
+        .btn-primary { background:#238636; border-color:#238636; }
+    </style>
+</head>
+<body>
+<div class="login-card">
+    <h1 class="mb-1"><i class="bi bi-hdd-network me-2"></i>Deploy Manager</h1>
+    <p class="text-secondary mb-4" style="font-size:.85rem">Administrator access</p>
+
+    @if (!string.IsNullOrEmpty(Model.Error))
+    {
+        <div class="alert alert-danger py-2" style="font-size:.875rem">@Model.Error</div>
+    }
+
+    @if (Model.IsFirstRun)
+    {
+        <p class="text-warning" style="font-size:.85rem">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            No password has been set yet. Set one now to secure your system.
+        </p>
+        <form method="post" asp-page-handler="SetPassword">
+            <div class="mb-3">
+                <label class="form-label text-secondary">New password</label>
+                <input type="password" name="newPassword" class="form-control" required autofocus />
+            </div>
+            <div class="mb-3">
+                <label class="form-label text-secondary">Confirm password</label>
+                <input type="password" name="confirmPassword" class="form-control" required />
+            </div>
+            <button class="btn btn-primary w-100">Set Password &amp; Continue</button>
+        </form>
+    }
+    else if (Model.MustChange)
+    {
+        <p class="text-warning" style="font-size:.85rem">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            You must change your password before continuing.
+        </p>
+        <form method="post" asp-page-handler="ChangePassword">
+            <input type="hidden" name="currentPassword" value="@Model.TempPassword" />
+            <div class="mb-3">
+                <label class="form-label text-secondary">New password</label>
+                <input type="password" name="newPassword" class="form-control" required autofocus />
+            </div>
+            <div class="mb-3">
+                <label class="form-label text-secondary">Confirm password</label>
+                <input type="password" name="confirmPassword" class="form-control" required />
+            </div>
+            <button class="btn btn-primary w-100">Change Password &amp; Continue</button>
+        </form>
+    }
+    else if (Model.EntraEnabled)
+    {
+        <a href="?handler=Entra" class="btn btn-primary w-100 mb-3">
+            <i class="bi bi-microsoft me-2"></i>Sign in with Microsoft
+        </a>
+        <div class="text-center text-secondary my-2" style="font-size:.78rem">— or —</div>
+        <details>
+            <summary class="text-secondary" style="font-size:.85rem;cursor:pointer">Use breakglass account</summary>
+            <form method="post" class="mt-3">
+                <div class="mb-3">
+                    <label class="form-label text-secondary">Breakglass password</label>
+                    <input type="password" name="password" class="form-control" required />
+                </div>
+                <button class="btn btn-outline-secondary w-100">Sign in with breakglass</button>
+            </form>
+        </details>
+    }
+    else
+    {
+        <form method="post">
+            <div class="mb-3">
+                <label class="form-label text-secondary">Password</label>
+                <input type="password" name="password" class="form-control" required autofocus />
+            </div>
+            <button class="btn btn-primary w-100">Sign in</button>
+        </form>
+    }
+</div>
+<script src="~/lib/bootstrap/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

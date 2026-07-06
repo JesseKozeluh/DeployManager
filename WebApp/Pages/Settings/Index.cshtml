@@ -1,0 +1,363 @@
+@page
+@model DeployManager.Pages.Settings.IndexModel
+@{ ViewData["Title"] = "Settings"; ViewData["ActivePage"] = "Settings"; }
+
+@if (!string.IsNullOrEmpty(Model.SaveResult))
+{
+    <div class="alert @(Model.SaveOk ? "alert-success" : "alert-danger") alert-dismissible mb-4">
+        @Model.SaveResult
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="row g-4">
+<div class="col-lg-8">
+
+<form method="post">
+<div class="card mb-4">
+    <div class="card-header"><i class="bi bi-building me-2"></i>Organisation</div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Organisation name</label>
+            <input asp-for="Cfg.OrgName" class="form-control" placeholder="Contoso IT" />
+            <div class="form-text">Shown in sidebar and page title.</div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Computer name prefix</label>
+            <input asp-for="Cfg.ComputerPrefix" class="form-control" placeholder="CORP-" />
+            <div class="form-text">Suggested prefix when creating deployment jobs.</div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><i class="bi bi-server me-2"></i>Server</div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Static file server URL</label>
+            <input asp-for="Cfg.DeployServerUrl" class="form-control font-monospace" placeholder="http://192.168.1.10:8080" />
+            <div class="form-text">Serves WIM images and HTTP job files to WinPE clients (port 8080).</div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">API / web app URL</label>
+            <input asp-for="Cfg.ApiServerUrl" class="form-control font-monospace" placeholder="http://192.168.1.10:8090" />
+            <div class="form-text">This web app (port 8090). Used by WinPE and PostInstall scripts.</div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Server IP address</label>
+            <input asp-for="Cfg.ServerIp" class="form-control font-monospace" placeholder="192.168.1.10" />
+            <div class="form-text">Used in DHCP / TFTP configuration instructions only.</div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><i class="bi bi-diagram-3 me-2"></i>Active Directory</div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Domain FQDN</label>
+            <input asp-for="Cfg.DomainFqdn" class="form-control font-monospace" placeholder="corp.contoso.com" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Service account UPN</label>
+            <div class="d-flex gap-2 align-items-start">
+                <input asp-for="Cfg.ServiceAccountUpn" class="form-control" placeholder="svc-osdeploy@corp.contoso.com" />
+                <button type="button" id="testDomainBtn" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap;margin-top:0">
+                    <i class="bi bi-plug me-1"></i>Test
+                </button>
+            </div>
+            <div id="testDomainResult" class="mt-1" style="font-size:.82rem;min-height:1.2em"></div>
+            <div class="form-text">Account used by djoin to pre-stage computer objects.</div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Service account password</label>
+            @if (Model.ServiceAccountPasswordSet)
+            {
+                <div class="form-text text-success mb-1"><i class="bi bi-shield-lock-fill me-1"></i>Password is set (encrypted at rest)</div>
+            }
+            else
+            {
+                <div class="form-text text-warning mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>No password set</div>
+            }
+            <input asp-for="Cfg.ServiceAccountPassword" type="password" class="form-control"
+                   placeholder="@(Model.ServiceAccountPasswordSet ? "Enter new password to replace" : "Enter service account password")"
+                   autocomplete="new-password" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Default computer OU</label>
+            <input asp-for="Cfg.DefaultComputerOU" class="form-control font-monospace"
+                   placeholder="OU=Computers,DC=corp,DC=contoso,DC=com" />
+            <div class="form-text">Fallback OU when no site match found.</div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><i class="bi bi-usb-drive me-2"></i>WinPE</div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Local admin account name</label>
+            <input asp-for="Cfg.WinpeLocalAccount" class="form-control" placeholder="LocalDeploy" />
+            <div class="form-text">Temporary local account created during imaging. Removed post-OSD in hardening step.</div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Local admin password</label>
+            @if (Model.WinpeLocalPasswordSet)
+            {
+                <div class="form-text text-success mb-1"><i class="bi bi-shield-lock-fill me-1"></i>Password is set (encrypted at rest)</div>
+            }
+            else
+            {
+                <div class="form-text text-warning mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>No password set</div>
+            }
+            <input asp-for="Cfg.WinpeLocalPassword" type="password" class="form-control"
+                   placeholder="@(Model.WinpeLocalPasswordSet ? "Enter new password to replace" : "Enter local admin password")"
+                   autocomplete="new-password" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Default timezone</label>
+            <input asp-for="Cfg.DefaultTimezone" class="form-control" placeholder="Eastern Standard Time" />
+            <div class="form-text">Windows timezone ID applied when no per-site timezone is set. See <a href="https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/default-time-zones" target="_blank">timezone IDs</a>.</div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Default locale</label>
+            <input asp-for="Cfg.DefaultLocale" class="form-control" placeholder="en-US" />
+            <div class="form-text">Windows locale tag used in unattend.xml (keyboard, UI language, regional formats). e.g. <code>en-US</code>, <code>en-GB</code>, <code>en-AU</code>. Can be overridden per site.</div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><i class="bi bi-share me-2"></i>Software Delivery</div>
+    <div class="card-body">
+        <div class="form-check form-switch mb-2">
+            <input asp-for="Cfg.EnableBranchCache" type="checkbox" class="form-check-input" role="switch" />
+            <label class="form-check-label" asp-for="Cfg.EnableBranchCache">
+                Enable BranchCache (site-local caching)
+            </label>
+        </div>
+        <div class="form-text">
+            When enabled, PostInstall activates <strong>BranchCache Distributed Cache</strong> mode on
+            each newly imaged machine and uses <strong>BITS</strong> (instead of
+            <code>Invoke-WebRequest</code>) for HTTP software downloads. Machines at the same site
+            then serve cached packages to each other, cutting repeat WAN downloads to near-zero.
+            <br /><br />
+            <strong>Pre-requisites:</strong> at least one machine at each remote site must already be
+            running with BranchCache enabled before imaging begins, so it can act as a peer source.
+            No hosted-cache server or WSUS infrastructure is required for Distributed Cache mode.
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><i class="bi bi-microsoft me-2"></i>Entra ID single sign-on</div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Sign-in method</label>
+            <select asp-for="Cfg.AuthMode" class="form-select">
+                <option value="local">Breakglass only (local password)</option>
+                <option value="entra">Entra ID SSO (breakglass retained as fallback)</option>
+            </select>
+            <div class="form-text">
+                Entra SSO needs the Tenant ID, Client ID and secret below, plus users registered under
+                <a asp-page="/Users/Index">Users</a>.
+            </div>
+            <div class="alert alert-warning py-2 px-3 mt-2 mb-0" style="font-size:.82rem">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                <strong>Service restart required.</strong> Changes to the sign-in method, Tenant ID, Client ID or secret only take effect after restarting the Deploy Manager service (via the tray app or <code>sc.exe</code>).
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Directory (tenant) ID</label>
+            <input asp-for="Cfg.EntraTenantId" class="form-control font-monospace" placeholder="00000000-0000-0000-0000-000000000000" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Application (client) ID</label>
+            <input asp-for="Cfg.EntraClientId" class="form-control font-monospace" placeholder="00000000-0000-0000-0000-000000000000" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Client secret</label>
+            @if (Model.EntraSecretSet)
+            {
+                <div class="form-text text-success mb-1"><i class="bi bi-shield-lock-fill me-1"></i>Secret is set (encrypted at rest)</div>
+            }
+            else
+            {
+                <div class="form-text text-warning mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>No secret set</div>
+            }
+            <input asp-for="Cfg.EntraClientSecret" type="password" class="form-control" autocomplete="new-password"
+                   placeholder="@(Model.EntraSecretSet ? "Enter new secret to replace" : "Paste the client secret value")" />
+        </div>
+        <div class="mb-1">
+            <label class="form-label">Redirect URI (register this in Entra)</label>
+            <input class="form-control font-monospace" readonly
+                   value="@(string.IsNullOrEmpty(Model.Cfg.ApiServerUrl) ? "https://<your-host>:8090" : Model.Cfg.ApiServerUrl)/signin-oidc" />
+            <div class="form-text">Add as a <strong>Web</strong> redirect URI on the app registration — one per host you sign in from (e.g. the CNAME).</div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><i class="bi bi-envelope me-2"></i>Email Notifications</div>
+    <div class="card-body">
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <label class="form-label">SMTP host</label>
+                <input asp-for="Cfg.SmtpHost" class="form-control font-monospace" placeholder="smtp.example.com" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Port</label>
+                <input asp-for="Cfg.SmtpPort" type="number" class="form-control" />
+            </div>
+            <div class="col-md-3 d-flex align-items-end pb-1">
+                <div class="form-check">
+                    <input asp-for="Cfg.SmtpStartTls" type="checkbox" class="form-check-input" />
+                    <label class="form-check-label" asp-for="Cfg.SmtpStartTls">STARTTLS / SSL</label>
+                </div>
+            </div>
+        </div>
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <label class="form-label">Username</label>
+                <input asp-for="Cfg.SmtpUsername" class="form-control" placeholder="notify@example.com" autocomplete="off" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Password</label>
+                @if (Model.SmtpPasswordSet)
+                {
+                    <div class="form-text text-success mb-1"><i class="bi bi-shield-lock-fill me-1"></i>Password is set (encrypted at rest)</div>
+                }
+                <input asp-for="Cfg.SmtpPassword" type="password" class="form-control"
+                       placeholder="@(Model.SmtpPasswordSet ? "Enter new password to replace" : "SMTP password")"
+                       autocomplete="new-password" />
+            </div>
+        </div>
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <label class="form-label">From address</label>
+                <input asp-for="Cfg.SmtpFrom" class="form-control" placeholder="deploymgr@example.com" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Notify address</label>
+                <input asp-for="Cfg.NotifyEmail" class="form-control" placeholder="it-team@example.com" />
+                <div class="form-text">Destination address for job notifications.</div>
+            </div>
+        </div>
+        <div class="d-flex flex-wrap gap-3 align-items-center">
+            <div class="form-check">
+                <input asp-for="Cfg.NotifyOnComplete" type="checkbox" class="form-check-input" />
+                <label class="form-check-label" asp-for="Cfg.NotifyOnComplete">Notify on complete</label>
+            </div>
+            <div class="form-check">
+                <input asp-for="Cfg.NotifyOnError" type="checkbox" class="form-check-input" />
+                <label class="form-check-label" asp-for="Cfg.NotifyOnError">Notify on error</label>
+            </div>
+            <button type="button" id="testEmailBtn" class="btn btn-sm btn-outline-secondary ms-auto">
+                <i class="bi bi-send me-1"></i>Send test email
+            </button>
+        </div>
+        <div id="testEmailResult" class="mt-2" style="font-size:.82rem;min-height:1.2em"></div>
+    </div>
+</div>
+
+<button type="submit" class="btn btn-primary">
+    <i class="bi bi-check-circle me-1"></i>Save Settings
+</button>
+</form>
+
+</div>
+
+<div class="col-lg-4">
+    <div class="card mb-4">
+        <div class="card-header"><i class="bi bi-person-lock me-2"></i>Breakglass password</div>
+        <div class="card-body">
+            <p class="text-secondary" style="font-size:.82rem">
+                Changes the emergency admin password accessible at <code>/auth/login</code>.
+            </p>
+            <form method="post" asp-page-handler="ChangeBreakglass">
+                <div class="mb-2">
+                    <input type="password" name="currentPassword" class="form-control form-control-sm"
+                           placeholder="Current password" required autocomplete="current-password" />
+                </div>
+                <div class="mb-2">
+                    <input type="password" name="newPassword" class="form-control form-control-sm"
+                           placeholder="New password" required autocomplete="new-password" />
+                </div>
+                <div class="mb-3">
+                    <input type="password" name="confirmPassword" class="form-control form-control-sm"
+                           placeholder="Confirm new password" required autocomplete="new-password" />
+                </div>
+                <button class="btn btn-sm btn-outline-warning w-100">Change Password</button>
+            </form>
+            <div class="mt-2 text-secondary" style="font-size:.75rem">
+                <i class="bi bi-info-circle me-1"></i>Min 14 chars, upper+lower+digit+special (ISM-0421)
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header"><i class="bi bi-map me-2"></i>Sites</div>
+        <div class="card-body">
+            <p class="text-secondary" style="font-size:.82rem">
+                Configure subnet → site → OU mappings and per-site timezones.
+            </p>
+            <a asp-page="/Settings/Sites" class="btn btn-sm btn-outline-primary w-100">
+                <i class="bi bi-pencil me-1"></i>Edit Sites
+            </a>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header"><i class="bi bi-arrow-up-circle me-2"></i>Updates</div>
+        <div class="card-body">
+            <div class="mb-2">
+                <label class="form-label" style="font-size:.8rem">GitHub releases API URL</label>
+                <input asp-for="Cfg.UpdateCheckUrl" class="form-control form-control-sm font-monospace"
+                       placeholder="https://api.github.com/repos/owner/repo/releases/latest" />
+                <div class="form-text">Leave blank to disable update checks.</div>
+            </div>
+            <button type="button" id="checkUpdateBtn" class="btn btn-sm btn-outline-secondary w-100">
+                <i class="bi bi-cloud-download me-1"></i>Check for updates
+            </button>
+            <div id="checkUpdateResult" class="mt-2" style="font-size:.82rem;min-height:1.2em"></div>
+        </div>
+    </div>
+</div>
+</div>
+
+@section Scripts {
+<script>
+async function ajaxGet(url, resultEl, btn) {
+    btn.disabled = true;
+    resultEl.innerHTML = '<span class="text-secondary"><span class="spinner-border spinner-border-sm me-1"></span>Please wait…</span>';
+    try {
+        const r = await fetch(url);
+        const d = await r.json();
+        if (d.ok) {
+            if (d.updateAvailable === false) {
+                resultEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>Up to date (v${d.current})</span>`;
+            } else if (d.updateAvailable === true) {
+                resultEl.innerHTML = `<span class="text-warning"><i class="bi bi-arrow-up-circle me-1"></i>v${d.latest} available — <a href="${d.releaseUrl}" target="_blank" rel="noopener">release notes</a></span>`;
+            } else {
+                resultEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${d.message}</span>`;
+            }
+        } else {
+            resultEl.innerHTML = `<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>${d.message}</span>`;
+        }
+    } catch (e) {
+        resultEl.innerHTML = `<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>${e.message}</span>`;
+    }
+    btn.disabled = false;
+}
+
+document.getElementById('testDomainBtn')?.addEventListener('click', function() {
+    ajaxGet('?handler=TestDomain', document.getElementById('testDomainResult'), this);
+});
+document.getElementById('testEmailBtn')?.addEventListener('click', function() {
+    ajaxGet('?handler=TestEmail', document.getElementById('testEmailResult'), this);
+});
+document.getElementById('checkUpdateBtn')?.addEventListener('click', function() {
+    ajaxGet('?handler=CheckUpdate', document.getElementById('checkUpdateResult'), this);
+});
+</script>
+}

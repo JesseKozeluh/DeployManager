@@ -1,0 +1,5 @@
+#!ipxe
+# Deploy Manager - iPXE autoboot script
+# Chains to the HTTP boot script on the Deploy Manager server.
+# ${next-server} is populated from DHCP option 66 (Boot Server).
+chain http://${next-server}:8080/boot.ipxe

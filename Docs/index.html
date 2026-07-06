@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deploy Manager — Setup &amp; Administration Guide</title>
+<style>
+:root {
+    --navy:   #172a3f;
+    --steel:  #2d5f8a;
+    --accent: #58a6ff;
+    --bg:     #0f1117;
+    --panel:  #161b22;
+    --panel2: #21262d;
+    --border: #30363d;
+    --text:   #c9d1d9;
+    --bright: #e6edf3;
+    --muted:  #8b949e;
+    --green:  #3fb950;
+    --amber:  #d29922;
+    --red:    #f85149;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; scroll-padding-top: 20px; }
+body {
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.65;
+    font-size: 15px;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Layout ─────────────────────────────────────────────── */
+.sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; width: 270px;
+    background: linear-gradient(180deg, var(--navy) 0%, #101d2c 100%);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 24px 0;
+}
+.content {
+    margin-left: 270px;
+    max-width: 900px;
+    padding: 40px 48px 120px;
+}
+@media (max-width: 900px) {
+    .sidebar { display: none; }
+    .content { margin-left: 0; padding: 24px; }
+}
+
+/* ── Sidebar ────────────────────────────────────────────── */
+.brand { display: flex; align-items: center; gap: 12px; padding: 0 20px 20px; border-bottom: 1px solid rgba(255,255,255,.08); margin-bottom: 14px; }
+.brand .mono {
+    width: 42px; height: 42px; border-radius: 8px; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--steel), var(--accent));
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 17px; color: #fff;
+}
+.brand .name { font-weight: 700; color: #fff; font-size: 16px; line-height: 1.2; }
+.brand .tag  { font-size: 11px; color: rgba(255,255,255,.55); }
+.nav-sec { font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em; color: rgba(255,255,255,.4); padding: 14px 20px 4px; }
+.sidebar a.nav-link {
+    display: block; padding: 5px 20px; color: rgba(255,255,255,.75);
+    font-size: 13.5px; border-left: 2px solid transparent;
+}
+.sidebar a.nav-link:hover { color: #fff; background: rgba(255,255,255,.05); text-decoration: none; }
+
+/* Sidebar scrollbar */
+.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 3px; }
+.sidebar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.25); }
+.sidebar { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.15) transparent; }
+
+/* ── Typography ─────────────────────────────────────────── */
+h1 { color: var(--bright); font-size: 30px; margin-bottom: 6px; }
+.subtitle { color: var(--muted); margin-bottom: 34px; font-size: 16px; }
+h2 {
+    color: var(--bright); font-size: 22px; margin: 52px 0 6px;
+    padding-top: 24px; border-top: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 12px;
+}
+h2 .n {
+    color: var(--accent); font-size: 14px; font-weight: 700;
+    background: rgba(88,166,255,.1); border: 1px solid rgba(88,166,255,.3);
+    border-radius: 6px; padding: 1px 9px; white-space: nowrap;
+}
+h3 { color: var(--bright); font-size: 16.5px; margin: 28px 0 8px; }
+p  { margin: 10px 0; }
+ul, ol { margin: 10px 0 10px 26px; }
+li { margin: 5px 0; }
+strong { color: var(--bright); }
+
+/* ── Code ───────────────────────────────────────────────── */
+code {
+    font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px;
+    background: #0d1117; border: 1px solid var(--border);
+    border-radius: 4px; padding: 1.5px 6px; color: #79c0ff;
+}
+pre {
+    background: #0d1117; border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 18px; overflow-x: auto; margin: 14px 0;
+    font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px;
+    line-height: 1.55; color: #a5d6ff;
+}
+pre .c { color: #8b949e; }   /* comment */
+pre code { background: none; border: none; padding: 0; color: inherit; }
+
+/* ── Components ─────────────────────────────────────────── */
+table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 14px; }
+th { background: var(--panel2); color: var(--bright); text-align: left; }
+th, td { border: 1px solid var(--border); padding: 8px 12px; }
+tr:nth-child(even) td { background: rgba(255,255,255,.015); }
+
+.note, .warn, .ok {
+    border-radius: 8px; padding: 12px 16px; margin: 16px 0; font-size: 14px;
+    border: 1px solid; border-left-width: 4px;
+}
+.note { background: rgba(88,166,255,.06);  border-color: rgba(88,166,255,.35);  }
+.warn { background: rgba(210,153,34,.07);  border-color: rgba(210,153,34,.45);  }
+.ok   { background: rgba(63,185,80,.07);   border-color: rgba(63,185,80,.4);    }
+.note::before { content: "ℹ  Note";    display: block; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+.warn::before { content: "⚠  Important"; display: block; font-weight: 700; color: var(--amber);  margin-bottom: 4px; }
+.ok::before   { content: "✓  Checkpoint"; display: block; font-weight: 700; color: var(--green);  margin-bottom: 4px; }
+
+.step { display: flex; gap: 14px; margin: 16px 0; }
+.step .num {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    background: var(--steel); color: #fff; font-weight: 700; font-size: 14px;
+    display: flex; align-items: center; justify-content: center; margin-top: 2px;
+}
+.step .body { flex: 1; }
+.step .body > strong { display: block; margin-bottom: 2px; }
+
+.flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 18px 0; }
+.flow .box {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; font-size: 13px; text-align: center; color: var(--bright);
+}
+.flow .box small { display: block; color: var(--muted); font-size: 11.5px; }
+.flow .arr { color: var(--steel); font-size: 18px; }
+
+.kbd-path { color: #ffa657; }
+footer { margin-top: 70px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+    <div class="brand">
+        <div class="mono">DM</div>
+        <div>
+            <div class="name">Deploy Manager</div>
+            <div class="tag">Setup &amp; Administration Guide</div>
+        </div>
+    </div>
+    <div class="nav-sec">Introduction</div>
+    <a class="nav-link" href="#overview">1 · What is Deploy Manager</a>
+    <a class="nav-link" href="#how-it-works">2 · How it works</a>
+    <a class="nav-link" href="#requirements">3 · Requirements</a>
+    <div class="nav-sec">Server setup</div>
+    <a class="nav-link" href="#install">4 · Installation</a>
+    <a class="nav-link" href="#first-run">5 · First-run setup</a>
+    <a class="nav-link" href="#settings">6 · Core settings &amp; sites</a>
+    <div class="nav-sec">Boot infrastructure</div>
+    <a class="nav-link" href="#adk">7 · Install the Windows ADK</a>
+    <a class="nav-link" href="#build-winpe">8 · Build the WinPE boot image</a>
+    <a class="nav-link" href="#ipxe">9 · iPXE binaries &amp; TFTP root</a>
+    <a class="nav-link" href="#dhcp">10 · DHCP configuration</a>
+    <a class="nav-link" href="#patch-bootwim">11 · Patch boot.wim</a>
+    <div class="nav-sec">Content</div>
+    <a class="nav-link" href="#images">12 · Windows install images</a>
+    <a class="nav-link" href="#drivers">13 · Driver packages</a>
+    <a class="nav-link" href="#software">14 · Software &amp; packages</a>
+    <div class="nav-sec">Deploying</div>
+    <a class="nav-link" href="#deploy">15 · Deploying a machine</a>
+    <div class="nav-sec">Administration</div>
+    <a class="nav-link" href="#certificate">16 · HTTPS certificate</a>
+    <a class="nav-link" href="#users">17 · Users &amp; authentication</a>
+    <a class="nav-link" href="#operations">18 · Operations &amp; backup</a>
+    <a class="nav-link" href="#troubleshooting">19 · Troubleshooting</a>
+    <a class="nav-link" href="#reference">20 · Reference</a>
+</nav>
+
+<main class="content">
+
+<h1>Deploy Manager</h1>
+<p class="subtitle">Complete setup and administration guide — from a fresh install to imaging your first machine.</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="overview"><span class="n">1</span>What is Deploy Manager</h2>
+<p>Deploy Manager is a self-hosted Windows deployment server. It PXE-boots bare-metal machines into
+WinPE, applies a Windows image (WIM), joins the machine to Active Directory in the correct OU based on
+its network subnet, installs software packages, and reports progress live to a web dashboard.</p>
+<ul>
+    <li><strong>Zero-touch imaging</strong> — technicians create a deployment job in the web UI; the machine does the rest.</li>
+    <li><strong>Site-aware</strong> — IP subnet determines the AD OU, timezone, and locale for each machine.</li>
+    <li><strong>Software deployment</strong> — post-install packages run automatically after Windows setup.</li>
+    <li><strong>Live monitoring</strong> — job status streams to the dashboard in real time.</li>
+    <li><strong>Self-contained</strong> — a single MSI installs everything: web app, TFTP server, tray monitor. No external database, no IIS, no .NET prerequisite.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="how-it-works"><span class="n">2</span>How it works</h2>
+<p>The PXE boot chain, end to end:</p>
+<div class="flow">
+    <div class="box">Client PXE boot<small>UEFI / BIOS firmware</small></div><div class="arr">→</div>
+    <div class="box">DHCP<small>option 66 + 67</small></div><div class="arr">→</div>
+    <div class="box">tftpd64<small>serves the boot file (UDP 69)</small></div><div class="arr">→</div>
+    <div class="box">shim<small>Microsoft-signed (Secure Boot)</small></div><div class="arr">→</div>
+    <div class="box">iPXE<small>fetches boot.ipxe over HTTP</small></div><div class="arr">→</div>
+    <div class="box">wimboot<small>loads WinPE at LAN speed (HTTP 8080)</small></div><div class="arr">→</div>
+    <div class="box">WinPE<small>runs Start-OSDeploy.ps1</small></div>
+</div>
+<p>On UEFI clients the firmware first loads <code>ipxe-shim.efi</code> — a
+Microsoft-signed shim — which in turn loads the iPXE-signed <code>ipxe.efi</code>.
+This satisfies UEFI Secure Boot with no firmware changes or key enrollment (see
+<a href="#ipxe">section 9</a>). Legacy BIOS clients load <code>undionly.kpxe</code>
+directly.</p>
+<p>Inside WinPE, <code>Start-OSDeploy.ps1</code> downloads live configuration from the server
+(<code>/api/deploy-config</code>), reports the machine to the server (it appears under
+<strong>Machines</strong>), then polls <code>http://server:8080/jobs/&lt;mac&gt;.json</code> for a
+deployment job. When a job exists it downloads and applies the WIM, injects drivers, pre-stages the
+computer account in AD, and reboots into Windows. A post-install phase installs the software package
+and reports success or failure back to the API.</p>
+
+<h3>Components installed on the server</h3>
+<table>
+<tr><th>Component</th><th>What it does</th><th>Where</th></tr>
+<tr><td><strong>DeployManager</strong> Windows service</td><td>Web UI + API (HTTPS 8090) and the WinPE file server (HTTP 8080)</td><td><code>C:\Program Files\DeployManager</code></td></tr>
+<tr><td><strong>Tftpd64</strong> Windows service</td><td>TFTP server for the initial PXE handoff (UDP 69), native service edition</td><td><code>C:\Program Files\DeployManager\tftp</code></td></tr>
+<tr><td><strong>Tray monitor</strong></td><td>System-tray app showing service health; starts at logon</td><td><code>C:\Program Files\DeployManager\tray</code></td></tr>
+<tr><td><strong>Helper scripts</strong></td><td>Boot-wim patching, iPXE downloads, WinPE task sequences</td><td><code>C:\Program Files\DeployManager\scripts</code></td></tr>
+<tr><td><strong>Data</strong></td><td>Database, settings, images, drivers, TFTP root</td><td><code>C:\ProgramData\DeployManager</code></td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="requirements"><span class="n">3</span>Requirements</h2>
+<ul>
+    <li>Windows Server 2019/2022 (or Windows 10/11) with a <strong>static IP address</strong></li>
+    <li>Local administrator rights for installation</li>
+    <li>Access to configure your <strong>DHCP server</strong> (options 66 and 67 on the target scope)</li>
+    <li>Disk space for your images — a typical Windows 11 WIM is 4–6 GB; allow 20 GB+ on the drive holding <code>C:\ProgramData\DeployManager\images</code></li>
+    <li><strong>Windows ADK + WinPE add-on</strong> on the server (needed to build and patch the boot image — <a href="#adk">section 7</a>). The signed iPXE Secure Boot chain and wimboot are already bundled in the installer, so no separate iPXE download is required.</li>
+    <li>An AD <strong>service account</strong> with <em>Full Control</em> over Computer objects in your target OUs (for domain join and re-imaging — see <a href="#svc-account">section 5</a>)</li>
+    <li>No .NET installation is required — the runtime ships inside the application.</li>
+</ul>
+<h3>Network ports (opened automatically by the installer)</h3>
+<table>
+<tr><th>Port</th><th>Protocol</th><th>Purpose</th></tr>
+<tr><td>8090</td><td>TCP (HTTPS)</td><td>Web UI and API — what you and WinPE clients authenticate against</td></tr>
+<tr><td>8080</td><td>TCP (HTTP)</td><td>WinPE file server: job files, WIM downloads, boot files, <code>boot.ipxe</code></td></tr>
+<tr><td>69</td><td>UDP (TFTP)</td><td>Initial PXE chainload only (a few hundred KB, then everything moves to HTTP)</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="install"><span class="n">4</span>Installation</h2>
+<div class="step"><div class="num">1</div><div class="body">
+    <strong>Run the installer</strong>
+    Double-click <code>DeployManager-&lt;version&gt;-Setup.msi</code> and follow the wizard. The default
+    location (<code>C:\Program Files\DeployManager</code>) is recommended.
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    <strong>Finish</strong>
+    On the final page, leave <em>Launch the Deploy Manager tray monitor</em> ticked. The installer
+    starts both Windows services automatically.
+</div></div>
+<div class="step"><div class="num">3</div><div class="body">
+    <strong>Verify</strong>
+    <pre>sc.exe query DeployManager
+sc.exe query Tftpd64</pre>
+    Both should report <code>RUNNING</code>. The tray icon should be visible near the clock.
+</div></div>
+<div class="ok">Browse to <code>https://&lt;server-ip&gt;:8090</code>. Your browser will warn about the
+certificate — that is expected on a fresh install (a self-signed certificate is generated automatically;
+you can replace it with one from your CA later, see <a href="#certificate">section 16</a>). You should
+land on the <strong>First-run Setup</strong> page.</div>
+
+<h3>Silent / scripted installation</h3>
+<pre>msiexec /i DeployManager-&lt;version&gt;-Setup.msi /qn</pre>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="first-run"><span class="n">5</span>First-run setup</h2>
+<p>The setup page collects the minimum needed to run. Everything can be changed later under
+<strong>Settings</strong>.</p>
+<table>
+<tr><th>Field</th><th>What to enter</th></tr>
+<tr><td>Organisation name</td><td>Shown in the UI and used in generated configuration, e.g. <code>Contoso IT</code></td></tr>
+<tr><td>Computer name prefix</td><td>Suggested prefix when creating jobs, e.g. <code>CORP-</code></td></tr>
+<tr><td>Static file server URL</td><td><code>http://&lt;server-ip&gt;:8080</code> — used by WinPE to download images and job files</td></tr>
+<tr><td>API server URL</td><td><code>https://&lt;server-ip&gt;:8090</code> — this web app. Use the IP, not a hostname, unless DNS is guaranteed available to WinPE</td></tr>
+<tr><td>Domain FQDN</td><td>e.g. <code>corp.contoso.com</code></td></tr>
+<tr><td>Default computer OU</td><td>Fallback OU distinguished name when no site matches, e.g. <code>OU=Computers,DC=corp,DC=contoso,DC=com</code></td></tr>
+<tr><td>Default timezone</td><td>Windows timezone ID, e.g. <code>Cen. Australia Standard Time</code></td></tr>
+<tr><td>Breakglass admin password</td><td>Emergency local login, always available at <code>/auth/login</code> regardless of SSO configuration. Store it in your password vault.</td></tr>
+</table>
+<p>After completing setup you are taken to the <strong>Getting Started checklist</strong>
+(<code>/Auth/Checklist</code>) which tracks the remaining steps — the same steps covered in the rest of
+this guide. You can return to it at any time.</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="settings"><span class="n">6</span>Core settings &amp; sites</h2>
+<h3>Sites (Settings → Sites)</h3>
+<p>A <strong>site</strong> maps an IP subnet to an Active Directory OU, with an optional timezone and
+locale override. When a machine PXE boots, its IP determines its site, and therefore where the computer
+object is created and which regional settings are applied.</p>
+<table>
+<tr><th>Field</th><th>Example</th></tr>
+<tr><td>Name</td><td><code>Head Office</code></td></tr>
+<tr><td>Subnet</td><td><code>192.168.10.0/24</code></td></tr>
+<tr><td>OU</td><td><code>OU=Workstations,OU=HeadOffice,DC=corp,DC=contoso,DC=com</code></td></tr>
+<tr><td>Timezone / Locale</td><td>Leave blank to inherit the defaults</td></tr>
+</table>
+<p>Configure at least one site before your first deployment.</p>
+
+<h3 id="svc-account">Service account (Settings)</h3>
+<p>Enter the UPN and password of the AD account used to pre-stage computer objects
+(<code>djoin</code>) during imaging and to remotely trigger reboots via WMI. The password is encrypted at rest (AES-256-GCM).</p>
+<p>The account does <strong>not</strong> need Domain Admin. Delegate the following on each target OU
+(e.g. via <em>Active Directory Users and Computers → Delegate Control</em> or <code>dsacls</code>):</p>
+<table>
+<tr><th>Permission</th><th>Applies to</th><th>Purpose</th></tr>
+<tr><td>Create/Delete Computer Objects</td><td>This object and all descendants</td><td>Create new machine accounts and clean up old ones</td></tr>
+<tr><td>Full Control</td><td>Descendant Computer objects</td><td>Read/write all properties, reset passwords, take ownership (required by KB5020276 account-reuse hardening for re-imaging)</td></tr>
+</table>
+<p>Additionally, the account needs <strong>local administrator</strong> rights on target machines for the PXE Reboot and Pre-stage Reboot actions (SMB to <code>admin$</code> + WMI process creation).</p>
+
+<h3>WinPE local account (Settings)</h3>
+<p>Set the local administrator account name and password that WinPE bakes into deployed machines via
+<code>unattend.xml</code>. The password is <strong>never served over the network</strong> — it is
+embedded into <code>boot.wim</code> when you patch it (<a href="#patch-bootwim">section 11</a>), so
+re-patch whenever you change it.</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="adk"><span class="n">7</span>Install the Windows ADK</h2>
+<p>The ADK provides the tooling to build and service WinPE images. Two installers are required, in this
+order, <strong>on the Deploy Manager server</strong>:</p>
+<div class="step"><div class="num">1</div><div class="body">
+    <strong>Windows ADK</strong> — during setup, only the <em>Deployment Tools</em> feature is required.
+    <br><a href="https://learn.microsoft.com/en-us/windows-hardware/get-started/adk-install">learn.microsoft.com/en-us/windows-hardware/get-started/adk-install</a>
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    <strong>Windows PE add-on for the ADK</strong> — same download page, separate installer. Provides the
+    base WinPE image and <code>copype</code>.
+</div></div>
+<div class="warn">Always service WinPE images with <strong>ADK DISM</strong>
+(<span class="kbd-path">C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\amd64\DISM\dism.exe</span>),
+not the inbox <code>C:\Windows\System32\dism.exe</code> — the inbox DISM cannot service current WinPE
+images and fails with obscure errors. All commands below assume the
+<em>Deployment and Imaging Tools Environment</em> prompt (Start Menu → Windows Kits), which puts ADK
+DISM first on the PATH.</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="build-winpe"><span class="n">8</span>Build the WinPE boot image</h2>
+<p>Run everything below in an elevated <strong>Deployment and Imaging Tools Environment</strong> prompt.</p>
+<div class="step"><div class="num">1</div><div class="body">
+    <strong>Create a working copy of WinPE</strong>
+    <pre>copype amd64 C:\WinPE</pre>
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    <strong>Mount the boot image</strong>
+    <pre>dism /Mount-Image /ImageFile:C:\WinPE\media\sources\boot.wim /Index:1 /MountDir:C:\WinPE_MOUNT</pre>
+    (Create <code>C:\WinPE_MOUNT</code> first if it does not exist.)
+</div></div>
+<div class="step"><div class="num">3</div><div class="body">
+    <strong>Add PowerShell support</strong> — the task sequence is PowerShell, so these optional
+    components are required (order matters):
+    <pre>set PKG=C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\amd64\WinPE_OCs
+dism /Image:C:\WinPE_MOUNT /Add-Package /PackagePath:"%PKG%\WinPE-WMI.cab"
+dism /Image:C:\WinPE_MOUNT /Add-Package /PackagePath:"%PKG%\WinPE-NetFX.cab"
+dism /Image:C:\WinPE_MOUNT /Add-Package /PackagePath:"%PKG%\WinPE-Scripting.cab"
+dism /Image:C:\WinPE_MOUNT /Add-Package /PackagePath:"%PKG%\WinPE-PowerShell.cab"
+dism /Image:C:\WinPE_MOUNT /Add-Package /PackagePath:"%PKG%\WinPE-StorageWMI.cab"
+dism /Image:C:\WinPE_MOUNT /Add-Package /PackagePath:"%PKG%\WinPE-DismCmdlets.cab"</pre>
+</div></div>
+<div class="step"><div class="num">4</div><div class="body">
+    <strong>Add network drivers for your hardware</strong> — WinPE must get a DHCP lease on every model
+    you deploy. Download the vendor's WinPE driver pack (Dell WinPE CAB, HP WinPE pack, Lenovo SCCM
+    pack), extract it, then:
+    <pre>dism /Image:C:\WinPE_MOUNT /Add-Driver /Driver:C:\WinPE_Drivers /Recurse</pre>
+    <div class="note">Do not use <code>/ForceUnsigned</code>. If a driver will not load without it, get
+    the properly signed WinPE driver from the vendor instead — unsigned drivers fail on Secure Boot
+    hardware anyway.</div>
+</div></div>
+<div class="step"><div class="num">5</div><div class="body">
+    <strong>Copy in the Deploy Manager task sequence</strong>
+    <pre>mkdir C:\WinPE_MOUNT\Deploy
+copy "C:\Program Files\DeployManager\scripts\Start-OSDeploy.ps1"    C:\WinPE_MOUNT\Deploy\
+copy "C:\Program Files\DeployManager\scripts\Start-PostInstall.ps1" C:\WinPE_MOUNT\Deploy\</pre>
+</div></div>
+<div class="step"><div class="num">6</div><div class="body">
+    <strong>Make WinPE launch the task sequence at boot</strong> — replace
+    <code>C:\WinPE_MOUNT\Windows\System32\startnet.cmd</code> with:
+    <pre>wpeinit
+powershell -ExecutionPolicy Bypass -NoProfile -File X:\Deploy\Start-OSDeploy.ps1</pre>
+</div></div>
+<div class="step"><div class="num">7</div><div class="body">
+    <strong>Commit and copy to the TFTP root</strong>
+    <pre>dism /Unmount-Image /MountDir:C:\WinPE_MOUNT /Commit
+
+mkdir "%ProgramData%\DeployManager\tftp\Boot"
+copy C:\WinPE\media\sources\boot.wim "%ProgramData%\DeployManager\tftp\Boot\boot.wim"
+copy C:\WinPE\media\Boot\BCD         "%ProgramData%\DeployManager\tftp\Boot\BCD"
+copy C:\WinPE\media\Boot\boot.sdi    "%ProgramData%\DeployManager\tftp\Boot\boot.sdi"</pre>
+</div></div>
+<div class="ok">The TFTP root now contains <code>Boot\boot.wim</code>, <code>Boot\BCD</code> and
+<code>Boot\boot.sdi</code>. The <strong>Settings → Boot Image</strong> page should show
+"boot.wim found".</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="ipxe"><span class="n">9</span>iPXE binaries &amp; TFTP root</h2>
+<p>Deploy Manager uses <a href="https://ipxe.org">iPXE</a> to move the boot process off slow TFTP and
+onto HTTP as early as possible.</p>
+<div class="ok"><strong>Nothing to do here — the installer already staged these files.</strong> The
+signed iPXE Secure Boot chain and wimboot ship inside the MSI and are placed in the TFTP root during
+installation. This section is reference; skip to <a href="#dhcp">section 10 (DHCP)</a> unless you want
+to update the binaries.</div>
+<p>To pull a newer signed iPXE release later (optional), run in an elevated PowerShell on the server:</p>
+<pre>powershell -ExecutionPolicy Bypass -File "C:\Program Files\DeployManager\scripts\Get-IpxeBinaries.ps1"</pre>
+<p>It downloads the latest signed chain and overwrites the bundled copies in place. The version that
+shipped is recorded in <span class="kbd-path">C:\ProgramData\DeployManager\tftp\VERSION.txt</span>.</p>
+<p>The files staged in the TFTP root:</p>
+<table>
+<tr><th>File</th><th>Purpose</th></tr>
+<tr><td><code>ipxe-shim.efi</code></td><td><strong>UEFI boot file (DHCP option 67).</strong> A Microsoft-signed shim; loads <code>ipxe.efi</code>. Works with Secure Boot on or off.</td></tr>
+<tr><td><code>ipxe.efi</code></td><td>iPXE with the full driver set, signed by the iPXE Secure Boot CA. Loaded by the shim — not booted directly.</td></tr>
+<tr><td><code>snponly-shim.efi</code> / <code>snponly.efi</code></td><td>Alternative chain using iPXE's UEFI SNP-only driver. Try this if a NIC misbehaves with the full <code>ipxe.efi</code>.</td></tr>
+<tr><td><code>undionly.kpxe</code></td><td>iPXE for legacy BIOS clients (no Secure Boot involved)</td></tr>
+<tr><td><code>wimboot</code></td><td>Secure Boot-capable WIM loader — loads WinPE over HTTP</td></tr>
+</table>
+<p>When an iPXE client asks the server for <code>http://&lt;server&gt;:8080/boot.ipxe</code>, Deploy
+Manager generates the boot script on the fly from current settings — there is no boot script file to
+maintain.</p>
+<p>Final TFTP root layout (<span class="kbd-path">C:\ProgramData\DeployManager\tftp</span>):</p>
+<pre>tftp\
+├── ipxe-shim.efi      <span class="c"># UEFI boot file (Microsoft-signed shim)</span>
+├── ipxe.efi           <span class="c"># loaded by the shim (iPXE-signed)</span>
+├── snponly-shim.efi   <span class="c"># alt chain</span>
+├── snponly.efi
+├── undionly.kpxe      <span class="c"># legacy BIOS</span>
+├── wimboot
+└── Boot\
+    ├── BCD
+    ├── boot.sdi
+    └── boot.wim</pre>
+<div class="ok"><strong>UEFI Secure Boot works out of the box — no firmware changes, no key
+enrollment, no disabling Secure Boot.</strong> Since iPXE v2.0.0 the project ships a
+<strong>Microsoft-signed shim</strong> (<code>ipxe-shim.efi</code>, signed by the "Microsoft Windows
+UEFI Driver Publisher" CA that firmware already trusts). The shim loads <code>ipxe.efi</code>, which is
+signed by the iPXE Secure Boot CA embedded in that shim. The trust chain is:</p>
+<div class="flow" style="margin-top:10px">
+    <div class="box">Firmware<small>trusts Microsoft UEFI CA</small></div><div class="arr">→</div>
+    <div class="box">ipxe-shim.efi<small>Microsoft-signed</small></div><div class="arr">→</div>
+    <div class="box">ipxe.efi<small>iPXE-CA signed</small></div><div class="arr">→</div>
+    <div class="box">wimboot → WinPE<small>Microsoft-signed boot mgr</small></div>
+</div>
+<p style="margin-top:10px">Point DHCP option 67 at <code>ipxe-shim.efi</code> for UEFI clients and you
+are done. The one trade-off: you must use the iPXE binaries exactly as shipped — you cannot compile a
+custom iPXE with extra features and keep it Secure Boot-trusted, because the shim only trusts binaries
+the iPXE project itself signs. The stock <code>ipxe.efi</code> covers everything Deploy Manager needs.</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="dhcp"><span class="n">10</span>DHCP configuration</h2>
+<p>Only two DHCP scope options are required. The installer pre-stages an <code>autoexec.ipxe</code> script
+in the TFTP root that automatically chains iPXE to the Deploy Manager HTTP boot script, so no
+DHCP user-class policies or vendor-class rules are needed.</p>
+<div class="step"><div class="num">1</div><div class="body">
+    <strong>Scope options</strong> — set these on the DHCP scope that covers the machines you want to PXE boot.
+    In an elevated PowerShell on the DHCP server:
+    <pre><span class="c"># Replace 192.168.10.0 with YOUR scope and &lt;server-ip&gt; with the Deploy Manager server IP</span>
+Set-DhcpServerv4OptionValue -ScopeId 192.168.10.0 -OptionId 66 -Value "&lt;server-ip&gt;"
+Set-DhcpServerv4OptionValue -ScopeId 192.168.10.0 -OptionId 67 -Value "ipxe-shim.efi"</pre>
+    <table>
+    <tr><th>Option</th><th>Value</th><th>Purpose</th></tr>
+    <tr><td>066 — Boot Server Host Name</td><td>The Deploy Manager server's IP address</td><td>Tells PXE where to TFTP from</td></tr>
+    <tr><td>067 — Bootfile Name</td><td><code>ipxe-shim.efi</code></td><td>Microsoft-signed shim for Secure Boot</td></tr>
+    </table>
+    <div class="note">Use <code>ipxe-shim.efi</code>, not <code>ipxe.efi</code>, as the UEFI boot file.
+    The shim is the Microsoft-signed first stage that Secure Boot firmware will accept; it then loads
+    <code>ipxe.efi</code> itself. Pointing option 67 straight at <code>ipxe.efi</code> would be rejected
+    on machines with Secure Boot enabled.</div>
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    <strong>Verify</strong> — confirm the options are set:
+    <pre>Get-DhcpServerv4OptionValue -ScopeId 192.168.10.0</pre>
+    You should see option 66 = your server IP and option 67 = <code>ipxe-shim.efi</code>.
+</div></div>
+<div class="step"><div class="num">3</div><div class="body">
+    <strong>Mixed UEFI/BIOS fleets (optional)</strong> — use DHCP policies on option 60/93
+    (client architecture) to serve <code>ipxe-shim.efi</code> to UEFI and <code>undionly.kpxe</code> to BIOS
+    within the same scope.
+</div></div>
+
+<h3 style="margin-top:20px">How the boot chain works</h3>
+<p style="font-size:.9em;color:var(--muted)">No manual intervention needed — this is just background on what happens during PXE boot:</p>
+<ol style="font-size:.9em;color:var(--muted);line-height:1.8">
+<li>Firmware PXE sends DHCP, gets option 66 (server IP) and option 67 (<code>ipxe-shim.efi</code>).</li>
+<li>Firmware downloads <code>ipxe-shim.efi</code> via TFTP — Microsoft-signed, passes Secure Boot.</li>
+<li>The shim loads <code>ipxe.efi</code> — signed by iPXE CA (trusted by the shim).</li>
+<li>iPXE fetches <code>autoexec.ipxe</code> from the TFTP server (pre-installed by the MSI).</li>
+<li><code>autoexec.ipxe</code> chains to <code>http://&lt;server&gt;:8080/boot.ipxe</code> (using DHCP option 66 as the server address).</li>
+<li>The HTTP boot script downloads <code>wimboot</code>, <code>BCD</code>, <code>boot.sdi</code>, and <code>boot.wim</code> over HTTP at full LAN speed.</li>
+<li>WinPE loads and runs <code>Start-OSDeploy.ps1</code>.</li>
+</ol>
+
+<div class="ok">Test: PXE-boot any machine on the scope. You should see iPXE load, fetch
+<code>boot.ipxe</code>, download <code>boot.wim</code> over HTTP at LAN speed, and land in WinPE.
+Within a minute the machine appears under <strong>Machines</strong> in the web UI.</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="patch-bootwim"><span class="n">11</span>Patch boot.wim</h2>
+<p><code>Start-OSDeploy.ps1</code> inside the boot image ships with two placeholders: the server URL and
+the WinPE local password. They must be patched before the image is usable — otherwise WinPE has no idea
+where its server is.</p>
+<div class="step"><div class="num">1</div><div class="body">
+    In the web UI open <strong>Settings → Boot Image</strong>. The status strip must show
+    <em>boot.wim found</em>, <em>API URL configured</em>, <em>WinPE password configured</em> and
+    <em>ADK DISM found</em>.
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    Click <strong>Patch boot.wim</strong>. The server mounts the image with ADK DISM (mount point
+    <code>C:\WinPE_MOUNT</code>), replaces the placeholders, and commits. Output appears on the page.
+</div></div>
+<div class="note">The patch also copies the latest <code>Start-OSDeploy.ps1</code> and
+<code>Start-PostInstall.ps1</code> into the WIM before replacing placeholders — so after an upgrade you
+only need to re-patch (no manual file copy).</div>
+<div class="warn">Re-run the patch whenever the <strong>API server URL</strong> or the
+<strong>WinPE local password</strong> changes, or after upgrading Deploy Manager. The equivalent command line, if you prefer scripting:
+<pre>powershell -ExecutionPolicy Bypass -File "C:\Program Files\DeployManager\scripts\Update-BootWim.ps1" `
+    -ServerUrl "https://&lt;server-ip&gt;:8090" -WinpePassword "&lt;password&gt;"</pre></div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="images"><span class="n">12</span>Windows install images</h2>
+<h3>Option A — straight from a Windows ISO</h3>
+<div class="step"><div class="num">1</div><div class="body">
+    Mount the Windows ISO (double-click), note its drive letter (e.g. <code>E:</code>), then list the
+    editions inside:
+    <pre>dism /Get-WimInfo /WimFile:E:\sources\install.wim</pre>
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    Export the edition you deploy (e.g. index 6 = Pro, index 3 = Enterprise — check the listing) into the
+    images directory:
+    <pre>dism /Export-Image /SourceImageFile:E:\sources\install.wim /SourceIndex:6 `
+     /DestinationImageFile:"%ProgramData%\DeployManager\images\Win11-24H2-Pro.wim" /Compress:max</pre>
+    <div class="note">If the ISO contains <code>install.esd</code> instead of <code>install.wim</code>,
+    the same command works — DISM converts ESD to WIM during export.</div>
+</div></div>
+<h3>Option B — a customised, captured image</h3>
+<p>Build a reference machine (install Windows, apps, updates), generalise it with
+<code>sysprep /oobe /generalize /shutdown</code>, boot it into WinPE, and capture:</p>
+<pre>dism /Capture-Image /ImageFile:D:\GoldenImage.wim /CaptureDir:C:\ /Name:"Golden Win11" /Compress:max</pre>
+<p>Copy the WIM into <code>%ProgramData%\DeployManager\images\</code>.</p>
+<h3>Register the image</h3>
+<p>Web UI → <strong>Images → Add WIM Image</strong>: give it a display name and the path relative to the
+images directory (e.g. <code>Win11-24H2-Pro.wim</code>). Only <em>Enabled</em> images are offered when
+creating jobs.</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="drivers"><span class="n">13</span>Driver packages</h2>
+<p>Driver packages are injected into the applied Windows image during deployment, so each model gets its
+correct drivers without touching the golden image.</p>
+<div class="step"><div class="num">1</div><div class="body">
+    Download the vendor's <strong>enterprise driver pack</strong> for the model (Dell Family CAB,
+    HP driver pack, Lenovo SCCM pack) and extract it into a subfolder of
+    <span class="kbd-path">C:\ProgramData\DeployManager\drivers</span>, e.g.
+    <code>drivers\Latitude-5450\</code>.
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    Web UI → <strong>Drivers → Add</strong>: name it and select the folder. When creating a deployment
+    job you choose which driver package applies.
+</div></div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="software"><span class="n">14</span>Software &amp; packages</h2>
+<p><strong>Software</strong> entries describe a single installer; <strong>Packages</strong> group them
+into an ordered set applied after Windows setup.</p>
+<div class="step"><div class="num">1</div><div class="body">
+    <strong>Software → Add Software</strong> — for each application provide the installer location
+    (a UNC path or a path under the images share), the working directory, and the silent install command,
+    e.g. <code>setup.exe /S</code> or <code>msiexec /i app.msi /qn</code>.
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    <strong>Packages → Create Package</strong> — select the software items and their order, e.g. a
+    "Standard SOE" package with your antivirus, office suite, VPN client and monitoring agent.
+</div></div>
+<p>During deployment, each install's exit code is captured and reported to the job — failures are
+visible per-application in the Jobs page.</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="deploy"><span class="n">15</span>Deploying a machine</h2>
+<div class="step"><div class="num">1</div><div class="body">
+    <strong>PXE-boot the target machine once</strong> (or add it manually under
+    <strong>Machines → Add Machine</strong> with its MAC address). Discovered machines report their MAC,
+    IP, model and serial number automatically.
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    <strong>Create the job</strong> — <strong>Deploy → New Deployment</strong>: pick the machine, confirm
+    the device name (prefix is suggested), site and OU (auto-detected from subnet), choose the WIM image,
+    software package, driver package, and <strong>join mode</strong> (<em>Domain Join</em> for on-prem AD, or
+    <em>Workgroup</em> for Autopilot/Intune — the machine boots to OOBE for Entra enrollment).
+    Then choose one of three actions:
+    <ul style="margin-top:8px">
+        <li><strong>Save Job Only</strong> — saves the job file. You manually PXE-boot the machine (e.g. via BIOS boot menu).</li>
+        <li><strong>Save Job + PXE Reboot</strong> — saves the job, then remotely sets the machine's next boot to its PXE/NIC firmware entry and reboots it via WMI. Requires the service account to have local admin rights on the target.</li>
+        <li><strong>Save Job + Pre-stage Reboot</strong> — saves the job, then remotely stages WinPE to the machine's local disk and reboots into it via the Windows Boot Manager. No PXE required — works over the WAN and on models where PXE is unavailable or blocked by Secure Boot policy. Also requires local admin on the target.</li>
+    </ul>
+</div></div>
+<div class="step"><div class="num">3</div><div class="body">
+    <strong>WinPE loads and images the machine.</strong> It finds its pending job within seconds and starts
+    imaging — partitioning, applying the WIM, injecting drivers, joining the domain (or workgroup for Autopilot),
+    writing <code>unattend.xml</code> with the site's timezone/locale, then rebooting into Windows setup
+    and the software phase. Workgroup deployments boot into OOBE for Autopilot enrollment instead of the desktop.
+</div></div>
+<div class="step"><div class="num">4</div><div class="body">
+    <strong>Watch it live</strong> — the <strong>Jobs</strong> page streams status in real time:
+    pending → imaging → software installs (per-app progress) → complete. Stale jobs are timed out
+    automatically by the watchdog. Email notifications on completion/failure can be enabled in Settings.
+</div></div>
+<div class="ok">That's the full loop. From here, imaging a machine is: create job → PXE boot → wait for
+the green badge.</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="certificate"><span class="n">16</span>HTTPS certificate</h2>
+<p>A 5-year self-signed certificate is generated on first start. To replace it with one signed by your
+internal CA (recommended — removes browser warnings and enables full certificate validation from WinPE):</p>
+<div class="step"><div class="num">1</div><div class="body">
+    <strong>Settings → Certificate → Generate CSR</strong> — enter the server's DNS name(s) and IP(s) as
+    subject alternative names. The private key never leaves the server (stored encrypted until the signed
+    certificate is installed).
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    <strong>Sign the CSR</strong> with your CA — for AD CS:
+    <pre>certreq -submit -attrib "CertificateTemplate:WebServer" deploymanager.csr</pre>
+</div></div>
+<div class="step"><div class="num">3</div><div class="body">
+    <strong>Upload the signed certificate</strong> (PEM/Base64) plus any chain on the same page. It is
+    served to new connections immediately — no service restart needed. The dashboard warns 30 days before
+    expiry.
+</div></div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="users"><span class="n">17</span>Users &amp; authentication</h2>
+<ul>
+    <li><strong>Breakglass login</strong> — the password set during first-run setup, always available at
+        <code>/auth/login</code>. Login attempts are rate-limited (10 per 15 minutes per IP).</li>
+    <li><strong>Microsoft Entra ID SSO</strong> — configure Tenant ID, Client ID and Client Secret in
+        Settings (create an app registration with redirect URI
+        <code>https://&lt;server&gt;:8090/signin-oidc</code>). If you access the server via multiple
+        hostnames or IPs, add a redirect URI for each (e.g.
+        <code>https://deploymanager.example.com:8090/signin-oidc</code> and
+        <code>https://192.168.1.10:8090/signin-oidc</code>). Only users you have added under
+        <strong>Users</strong> (by UPN) can sign in, each with a role controlling their access.
+        <div class="warn" style="margin-top:10px"><strong>Restart the Deploy Manager service</strong> after
+        changing the sign-in method, Tenant ID, Client ID or secret. These settings are read once at startup
+        and do not take effect until the service is restarted (via the tray app or
+        <code>sc.exe restart DeployManager</code>).</div></li>
+    <li><strong>Audit log</strong> — every sign-in, settings change, certificate operation and deployment
+        action is recorded, viewable under <strong>Audit</strong>.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="operations"><span class="n">18</span>Operations &amp; backup</h2>
+<h3>Backup</h3>
+<p>Everything that matters lives in <span class="kbd-path">C:\ProgramData\DeployManager</span> — back up
+this folder. Critical files within it:</p>
+<table>
+<tr><th>Path</th><th>Contents</th></tr>
+<tr><td><code>data\deploymgr.db</code></td><td>SQLite database — machines, jobs, images, packages, users</td></tr>
+<tr><td><code>data\settings.json</code></td><td>Configuration (secrets encrypted)</td></tr>
+<tr><td><code>data\enc.key</code></td><td><strong>The AES-256 encryption key.</strong> Without it, stored secrets are unrecoverable — protect this backup accordingly</td></tr>
+<tr><td><code>data\deploymgr.pfx</code></td><td>The HTTPS certificate and private key</td></tr>
+<tr><td><code>images\ / drivers\ / tftp\</code></td><td>Your WIMs, driver packs and boot files</td></tr>
+</table>
+<h3>Health monitoring</h3>
+<p><code>https://&lt;server&gt;:8090/health</code> returns unauthenticated JSON with service status,
+certificate expiry and disk space — point your monitoring platform at it.</p>
+<h3>Upgrades</h3>
+<p>Run the newer MSI over the top — it upgrades in place. Services are stopped and restarted; your data
+in ProgramData is untouched.</p>
+<h3>Uninstall</h3>
+<p>Removes the program, services and firewall rules. <strong><code>C:\ProgramData\DeployManager</code> is
+deliberately left behind</strong> (your database, images and keys) — delete it manually if you want a
+complete removal.</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="troubleshooting"><span class="n">19</span>Troubleshooting</h2>
+<table>
+<tr><th>Symptom</th><th>Check</th></tr>
+<tr><td>Web UI unreachable</td><td><code>sc.exe query DeployManager</code>. Service logs are in Event Viewer → Application, sources <code>DeployManager</code> and <code>.NET Runtime</code>. Remember: the UI is HTTPS on <strong>8090</strong> — port 8080 serves files only and returns 404 for everything else.</td></tr>
+<tr><td>PXE client says "no boot filename received"</td><td>DHCP options 66/67 not set on the scope, or a firewall between client and DHCP. Verify with <code>ipconfig /all</code> on a machine in the scope.</td></tr>
+<tr><td>iPXE loads, then loops back into iPXE</td><td>Verify <code>autoexec.ipxe</code> exists in the TFTP root (<code>%ProgramData%\DeployManager\tftp\</code>). The installer places it there; if deleted, recreate it with: <code>#!ipxe</code> newline <code>chain http://${next-server}:8080/boot.ipxe</code>.</td></tr>
+<tr><td>TFTP timeout downloading the boot file</td><td><code>sc.exe query Tftpd64</code>; confirm UDP 69 open (installer adds the rule); confirm <code>ipxe-shim.efi</code> exists in the TFTP root. Test from another machine: <code>tftp -i &lt;server&gt; get ipxe-shim.efi</code>. If the service runs but serves nothing, check that the config file is named <code>tftpd32.ini</code> (legacy filename) — the service edition ignores <code>tftpd64.ini</code>.</td></tr>
+<tr><td>Secure Boot violation loading the boot file</td><td>Confirm DHCP option 67 is <code>ipxe-shim.efi</code> (the Microsoft-signed shim), <em>not</em> <code>ipxe.efi</code> directly. Re-run <code>Get-IpxeBinaries.ps1</code> if the shim is missing from the TFTP root. If a specific NIC still fails, try the <code>snponly-shim.efi</code> chain.</td></tr>
+<tr><td>iPXE says "BCD not found" or "boot.sdi not found"</td><td>The TFTP Boot folder is missing <code>BCD</code> or <code>boot.sdi</code>. Copy them from your WinPE build directory: <code>copy C:\WinPE\media\Boot\BCD "%ProgramData%\DeployManager\tftp\Boot\"</code> and the same for <code>boot.sdi</code>. See <a href="#build-winpe">section 8, step 7</a>.</td></tr>
+<tr><td>WinPE boots but "CANNOT REACH DEPLOYMANAGER SERVER"</td><td>The boot.wim was not patched (<a href="#patch-bootwim">section 11</a>), the API URL in it is stale, or WinPE has no NIC driver (<a href="#build-winpe">section 8, step 4</a>) — check <code>ipconfig</code> in the WinPE console.</td></tr>
+<tr><td>Machine images but does not join the domain</td><td>Service account credentials in Settings, its <em>Full Control</em> delegation on Computer objects in the target OU (<a href="#svc-account">section 5</a>), and that the site's OU DN is valid. For re-images, the service account must also be the <strong>owner</strong> of the existing computer object (KB5020276).</td></tr>
+<tr><td>Software installs report failures</td><td>Expand the job's software results in the Jobs page — each row has the installer's exit code and error output.</td></tr>
+<tr><td>Service fails to start after config changes</td><td>Almost always an invalid <code>appsettings.json</code> or an in-use port. The exact exception is in Event Viewer → Application, source <code>.NET Runtime</code>.</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="reference"><span class="n">20</span>Reference</h2>
+<h3>Paths</h3>
+<table>
+<tr><th>Path</th><th>Purpose</th></tr>
+<tr><td><code>C:\Program Files\DeployManager</code></td><td>Application binaries (service exe, web assets)</td></tr>
+<tr><td><code>C:\Program Files\DeployManager\scripts</code></td><td><code>Update-BootWim.ps1</code>, <code>Get-IpxeBinaries.ps1</code>, WinPE task sequences</td></tr>
+<tr><td><code>C:\Program Files\DeployManager\tftp</code></td><td>tftpd64 service edition binary and tftpd32.ini</td></tr>
+<tr><td><code>C:\Program Files\DeployManager\tray</code></td><td>Tray monitor application</td></tr>
+<tr><td><code>C:\Program Files\DeployManager\docs</code></td><td>This guide</td></tr>
+<tr><td><code>C:\ProgramData\DeployManager\data</code></td><td>Database, settings, encryption key, certificate, audit log, job files</td></tr>
+<tr><td><code>C:\ProgramData\DeployManager\images</code></td><td>Windows WIM images</td></tr>
+<tr><td><code>C:\ProgramData\DeployManager\drivers</code></td><td>Driver packages (one subfolder per package)</td></tr>
+<tr><td><code>C:\ProgramData\DeployManager\tftp</code></td><td>TFTP root: iPXE binaries + <code>Boot\</code> (BCD, boot.sdi, boot.wim)</td></tr>
+</table>
+<h3>Endpoints</h3>
+<table>
+<tr><th>URL</th><th>Purpose</th></tr>
+<tr><td><code>https://server:8090/</code></td><td>Web UI (authenticated)</td></tr>
+<tr><td><code>https://server:8090/health</code></td><td>JSON health check (anonymous)</td></tr>
+<tr><td><code>https://server:8090/api/deploy-config</code></td><td>WinPE configuration script (anonymous, no secrets)</td></tr>
+<tr><td><code>http://server:8080/boot.ipxe</code></td><td>Generated iPXE boot script</td></tr>
+<tr><td><code>http://server:8080/jobs/&lt;mac&gt;.json</code></td><td>Per-machine job file polled by WinPE</td></tr>
+<tr><td><code>http://server:8080/winpe/…</code></td><td>WinPE boot files over HTTP (wimboot path)</td></tr>
+<tr><td><code>http://server:8080/images/&lt;path&gt;</code></td><td>WIM / driver downloads from the images directory</td></tr>
+</table>
+<h3>Services</h3>
+<table>
+<tr><th>Service</th><th>Account</th><th>Start</th></tr>
+<tr><td><code>DeployManager</code></td><td>LocalSystem</td><td>Automatic</td></tr>
+<tr><td><code>Tftpd64</code></td><td>LocalSystem</td><td>Automatic</td></tr>
+</table>
+
+<footer>
+    Deploy Manager — © 2026 Jesse Kozeluh · MIT License ·
+    Bundled components: tftpd64 (Ph. Jounin, EUPL), iPXE/wimboot (GPL, downloaded separately).
+    This guide is installed at <code>C:\Program Files\DeployManager\docs\index.html</code>.
+</footer>
+
+</main>
+</body>
+</html>

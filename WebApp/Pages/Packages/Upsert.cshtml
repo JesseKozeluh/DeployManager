@@ -1,0 +1,151 @@
+@page "{id?}"
+@model DeployManager.Pages.Packages.UpsertModel
+@{ ViewData["Title"] = Model.IsNew ? "Create Package" : "Edit Package"; ViewData["ActivePage"] = "Packages"; }
+
+<div class="row justify-content-center">
+<div class="col-lg-9">
+<form method="post">
+    <input type="hidden" asp-for="Package.Id" />
+    <input type="hidden" name="OrderedIds" id="orderedIds" value="@string.Join(",", Model.Package.SoftwareIds)" />
+    <div asp-validation-summary="All" class="alert alert-danger" style="display:@(ViewData.ModelState.IsValid ? "none" : "block")"></div>
+
+    <div class="card mb-3">
+        <div class="card-header">Package Details</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <label asp-for="Package.Name" class="form-label">Package Name <span class="text-danger">*</span></label>
+                    <input asp-for="Package.Name" class="form-control" placeholder="e.g. Standard User" required />
+                </div>
+                <div class="col-md-7">
+                    <label asp-for="Package.Description" class="form-label">Description</label>
+                    <input asp-for="Package.Description" class="form-control" placeholder="Who is this package for?" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <!-- Available software -->
+        <div class="col-md-5">
+            <div class="card h-100">
+                <div class="card-header">Available Software</div>
+                <div class="card-body p-2" style="max-height:420px;overflow-y:auto">
+                    @if (!Model.Available.Any())
+                    {
+                        <p class="text-secondary p-2 mb-0" style="font-size:.85rem">
+                            No software in catalog. <a asp-page="/Software/Upsert">Add some first.</a>
+                        </p>
+                    }
+                    @foreach (var sw in Model.Available)
+                    {
+                        <div class="d-flex justify-content-between align-items-center p-2 mb-1 rounded"
+                             style="background:#21262d;font-size:.85rem">
+                            <div>
+                                <div class="fw-semibold">@sw.Name</div>
+                                <div class="text-secondary" style="font-size:.75rem">@sw.InstallerType</div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary add-btn"
+                                    data-id="@sw.Id" data-name="@sw.Name" data-type="@sw.InstallerType">
+                                <i class="bi bi-plus"></i>
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Package contents (sortable) -->
+        <div class="col-md-7">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Package Contents</span>
+                    <span class="text-secondary" style="font-size:.75rem"><i class="bi bi-grip-vertical me-1"></i>Drag to reorder</span>
+                </div>
+                <div class="card-body p-2" style="min-height:200px;max-height:420px;overflow-y:auto">
+                    <ul id="packageList" class="list-unstyled mb-0">
+                        @foreach (var swId in Model.Package.SoftwareIds)
+                        {
+                            var sw = Model.SoftwareLookup.GetValueOrDefault(swId);
+                            <li class="sortable-item d-flex justify-content-between align-items-center p-2 mb-1 rounded"
+                                data-id="@swId" style="background:#21262d;font-size:.85rem">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="bi bi-grip-vertical text-secondary"></i>
+                                    <div>
+                                        <div class="fw-semibold">@(sw?.Name ?? swId)</div>
+                                        <div class="text-secondary" style="font-size:.75rem">@(sw?.InstallerType ?? "")</div>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-danger remove-btn" data-id="@swId">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                    <div id="emptyHint" class="text-secondary text-center p-3" style="font-size:.85rem;@(Model.Package.SoftwareIds.Any() ? "display:none" : "")">
+                        Add software from the left panel
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save Package</button>
+        <a asp-page="Index" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+</div>
+</div>
+
+@section Scripts {
+<script>
+// Software lookup for adding items dynamically
+const swMeta = {};
+@foreach (var sw in Model.AllSoftware)
+{
+    <text>swMeta['@sw.Id'] = { name: '@Html.Raw(sw.Name.Replace("'", "\\'"))', type: '@sw.InstallerType' };</text>
+}
+
+function updateHidden() {
+    const ids = Array.from(document.querySelectorAll('#packageList li[data-id]')).map(el => el.dataset.id);
+    document.getElementById('orderedIds').value = ids.join(',');
+    document.getElementById('emptyHint').style.display = ids.length ? 'none' : '';
+}
+
+// Sortable
+Sortable.create(document.getElementById('packageList'), {
+    animation: 150, ghostClass: 'sortable-ghost', handle: '.bi-grip-vertical',
+    onSort: updateHidden
+});
+
+// Add button
+document.addEventListener('click', e => {
+    const btn = e.target.closest('.add-btn');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    if (document.querySelector(`#packageList [data-id="${id}"]`)) return; // already added
+    const meta = swMeta[id] || { name: id, type: '' };
+    const li = document.createElement('li');
+    li.className = 'sortable-item d-flex justify-content-between align-items-center p-2 mb-1 rounded';
+    li.dataset.id = id;
+    li.style.background = '#21262d';
+    li.style.fontSize = '.85rem';
+    li.innerHTML = `<div class="d-flex align-items-center gap-2">
+        <i class="bi bi-grip-vertical text-secondary"></i>
+        <div><div class="fw-semibold">${meta.name}</div><div class="text-secondary" style="font-size:.75rem">${meta.type}</div></div>
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-danger remove-btn" data-id="${id}"><i class="bi bi-x"></i></button>`;
+    document.getElementById('packageList').appendChild(li);
+    updateHidden();
+});
+
+// Remove button
+document.addEventListener('click', e => {
+    const btn = e.target.closest('.remove-btn');
+    if (!btn) return;
+    btn.closest('li').remove();
+    updateHidden();
+});
+</script>
+}

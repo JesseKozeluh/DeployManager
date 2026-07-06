@@ -1,0 +1,323 @@
+@page
+@model DeployManager.Pages.Jobs.IndexModel
+@{ ViewData["Title"] = "Deployment Jobs"; ViewData["ActivePage"] = "Jobs"; }
+
+<style>
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    .spin { display: inline-block; animation: spin 1.2s linear infinite; }
+</style>
+
+<!-- ── Filter bar ──────────────────────────────────────────────────────────── -->
+<form method="get" class="d-flex flex-wrap gap-2 align-items-center mb-3">
+    <select name="FilterStatus" class="form-select form-select-sm" style="width:auto">
+        <option value="">All statuses</option>
+        @foreach (var s in DeployManager.Pages.Jobs.IndexModel.Statuses)
+        {
+            <option value="@s" selected="@(Model.FilterStatus == s)">@s</option>
+        }
+    </select>
+    <select name="FilterSite" class="form-select form-select-sm" style="width:auto">
+        <option value="">All sites</option>
+        @foreach (var s in Model.Sites)
+        {
+            <option value="@s" selected="@(Model.FilterSite == s)">@s</option>
+        }
+    </select>
+    <button type="submit" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-funnel me-1"></i>Filter
+    </button>
+    @if (!string.IsNullOrEmpty(Model.FilterStatus) || !string.IsNullOrEmpty(Model.FilterSite))
+    {
+        <a asp-page="Index" class="btn btn-sm btn-link text-secondary p-0">Clear</a>
+    }
+
+    <span class="text-secondary ms-auto" style="font-size:.8rem">
+        @Model.TotalJobs job@(Model.TotalJobs == 1 ? "" : "s")
+    </span>
+
+    <form method="post" asp-page-handler="ClearTerminal" class="d-inline">
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+                data-dm-confirm="Delete all completed, failed, and timed-out jobs? Active (pending/imaging) jobs are kept."
+                data-dm-ok="Clear" data-dm-class="btn btn-warning">
+            <i class="bi bi-trash me-1"></i>Clear finished
+        </button>
+    </form>
+</form>
+
+<div class="card">
+    <div class="card-body p-0">
+        @if (!Model.Jobs.Any())
+        {
+            <div class="p-4 text-center">
+                <i class="bi bi-list-task text-secondary" style="font-size:2rem"></i>
+                <p class="text-secondary mt-2 mb-1">
+                    @(Model.TotalJobs == 0 ? "No deployment jobs yet." : "No jobs match the current filter.")
+                </p>
+                @if (Model.TotalJobs == 0)
+                {
+                    <a asp-page="/Deploy/Index" class="btn btn-sm btn-primary mt-1">
+                        <i class="bi bi-lightning-charge-fill me-1"></i>Create a deployment
+                    </a>
+                }
+            </div>
+        }
+        else
+        {
+            <table id="jobsTable" class="table table-hover mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th>Device</th><th>MAC</th><th>Site</th><th>Image</th>
+                        <th>Package</th><th>Status</th><th>Timestamps</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var job in Model.Jobs)
+                {
+                    var rowId   = "sw-" + job.Id;
+                    var hasSw   = job.SoftwareResults.Any();
+                    var imaging = job.Status == "imaging";
+                    <tr>
+                        <td class="fw-semibold"><code>@job.DeviceName</code></td>
+                        <td><code style="font-size:.75rem">@job.MacAddress</code></td>
+                        <td>@job.Site</td>
+                        <td><span style="font-size:.8rem">@job.WimName</span></td>
+                        <td>
+                            @{ var pkg = Model.PackageLookup.GetValueOrDefault(job.PackageId); }
+                            <span style="font-size:.8rem">@(pkg?.Name ?? (string.IsNullOrEmpty(job.PackageId) ? "None" : job.PackageId))</span>
+                        </td>
+                        <td>
+                            @{
+                                var badgeClass = job.Status switch {
+                                    "complete" => "bg-success",
+                                    "imaging"  => "bg-info text-dark",
+                                    "error"    => "bg-danger",
+                                    "timeout"  => "bg-warning text-dark",
+                                    _          => "bg-secondary"
+                                };
+                            }
+                            <span class="badge @badgeClass">@job.Status</span>
+
+                            @if (!string.IsNullOrEmpty(job.ErrorMessage))
+                            {
+                                <div class="text-danger" style="font-size:.72rem">
+                                    <i class="bi bi-exclamation-triangle"></i>
+                                    @job.ErrorMessage[..Math.Min(60, job.ErrorMessage.Length)]
+                                </div>
+                            }
+
+                            @if (imaging && job.SoftwareTotal > 0)
+                            {
+                                <div class="text-secondary mt-1" style="font-size:.72rem">
+                                    <i class="bi bi-arrow-repeat spin me-1"></i>
+                                    Software @job.SoftwareResults.Count/@job.SoftwareTotal installed
+                                </div>
+                            }
+                            else if (imaging && !hasSw)
+                            {
+                                <div class="text-secondary mt-1" style="font-size:.72rem">
+                                    <i class="bi bi-arrow-repeat spin me-1"></i>
+                                    Windows Setup running...
+                                </div>
+                            }
+
+                            @if (imaging && !string.IsNullOrEmpty(job.CurrentInstall))
+                            {
+                                <div class="text-info mt-1" style="font-size:.72rem; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="@job.CurrentInstall">
+                                    <i class="bi bi-play-fill"></i> @job.CurrentInstall
+                                </div>
+                            }
+
+                            @if (hasSw)
+                            {
+                                var ok          = job.SoftwareResults.Count(r => r.Success);
+                                var fail        = job.SoftwareResults.Count(r => !r.Success);
+                                var received    = job.SoftwareResults.Count;
+                                var expectedTotal = Math.Max(received, job.SoftwareTotal);
+                                var missing     = expectedTotal - received;
+                                <a class="d-block mt-1" style="font-size:.72rem; cursor:pointer"
+                                   data-bs-toggle="collapse" data-bs-target="#@rowId">
+                                    <i class="bi bi-box-seam me-1"></i>
+                                    @ok/@expectedTotal OK
+                                    @if (fail > 0) { <span class="text-danger">(@fail failed)</span> }
+                                    @if (missing > 0) { <span class="text-warning" title="@missing result(s) not reported — may have timed out">(@missing unreported)</span> }
+                                </a>
+                            }
+                        </td>
+                        <td class="text-secondary" style="font-size:.75rem">
+                            Created @job.Created.ToLocalTime().ToString("dd/MM/yy HH:mm")<br/>
+                            @if (job.Started.HasValue)
+                            {
+                                <span>Imaged &nbsp;@job.Started.Value.ToLocalTime().ToString("dd/MM/yy HH:mm")</span><br/>
+                            }
+                            @if (job.Completed.HasValue)
+                            {
+                                <span class="@(job.Status is "error" or "timeout" ? "text-danger" : "text-success")">Done &nbsp;&nbsp;&nbsp;@job.Completed.Value.ToLocalTime().ToString("dd/MM/yy HH:mm")</span>
+                                @if (job.Started.HasValue)
+                                {
+                                    var dur = job.Completed.Value - job.Started.Value;
+                                    var durStr = dur.TotalHours >= 1
+                                        ? $"{(int)dur.TotalHours}h {dur.Minutes}m"
+                                        : $"{dur.Minutes}m {dur.Seconds}s";
+                                    <br/><span class="text-secondary">⏱ @durStr</span>
+                                }
+                            }
+                        </td>
+                        <td>
+                            <form method="post" asp-page-handler="Delete" asp-route-mac="@job.MacAddress"
+                                  asp-route-FilterStatus="@Model.FilterStatus"
+                                  asp-route-FilterSite="@Model.FilterSite"
+                                  asp-route-CurrentPage="@Model.CurrentPage">
+                                <button type="button" class="btn btn-sm btn-outline-danger" title="Delete job"
+                                        data-dm-confirm="Delete job for '@job.DeviceName'? This cannot be undone.">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    @if (hasSw)
+                    {
+                        <tr class="collapse" id="@rowId">
+                            <td colspan="8" class="p-0">
+                                <div class="px-4 py-3" style="background:#161b22; border-top:1px solid #30363d; border-bottom:1px solid #30363d">
+                                    <strong style="font-size:.8rem">Software results</strong>
+                                    <table class="table table-sm table-dark mb-0 mt-2" style="font-size:.8rem; background:transparent">
+                                        <thead>
+                                            <tr><th>Name</th><th>Result</th><th>Exit code</th><th>Error</th></tr>
+                                        </thead>
+                                        <tbody>
+                                        @foreach (var sw in job.SoftwareResults)
+                                        {
+                                            <tr>
+                                                <td>@sw.Name</td>
+                                                <td>
+                                                    @if (sw.Success)
+                                                    { <span class="badge bg-success">OK</span> }
+                                                    else
+                                                    { <span class="badge bg-danger">Failed</span> }
+                                                </td>
+                                                <td><code>@sw.ExitCode</code></td>
+                                                <td class="text-danger">@sw.Error</td>
+                                            </tr>
+                                        }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+<!-- ── Pagination ────────────────────────────────────────────────────────────── -->
+@if (Model.TotalPages > 1)
+{
+    <nav class="mt-3 d-flex align-items-center gap-3">
+        <ul class="pagination pagination-sm mb-0">
+            <li class="page-item @(Model.CurrentPage <= 1 ? "disabled" : "")">
+                <a class="page-link" asp-page="Index"
+                   asp-route-FilterStatus="@Model.FilterStatus"
+                   asp-route-FilterSite="@Model.FilterSite"
+                   asp-route-CurrentPage="@(Model.CurrentPage - 1)">‹ Prev</a>
+            </li>
+            @for (var p = Math.Max(1, Model.CurrentPage - 2); p <= Math.Min(Model.TotalPages, Model.CurrentPage + 2); p++)
+            {
+                <li class="page-item @(p == Model.CurrentPage ? "active" : "")">
+                    <a class="page-link" asp-page="Index"
+                       asp-route-FilterStatus="@Model.FilterStatus"
+                       asp-route-FilterSite="@Model.FilterSite"
+                       asp-route-CurrentPage="@p">@p</a>
+                </li>
+            }
+            <li class="page-item @(Model.CurrentPage >= Model.TotalPages ? "disabled" : "")">
+                <a class="page-link" asp-page="Index"
+                   asp-route-FilterStatus="@Model.FilterStatus"
+                   asp-route-FilterSite="@Model.FilterSite"
+                   asp-route-CurrentPage="@(Model.CurrentPage + 1)">Next ›</a>
+            </li>
+        </ul>
+        <span class="text-secondary" style="font-size:.8rem">
+            Page @Model.CurrentPage of @Model.TotalPages
+        </span>
+    </nav>
+}
+
+<span id="jobsActive" data-active="@(Model.AnyActive ? "1" : "0")" hidden></span>
+
+<p id="liveStatus" class="text-secondary mt-2 mb-0" style="font-size:.8rem; @(Model.AnyActive ? "" : "display:none")">
+    <i class="bi bi-arrow-repeat spin me-1"></i>
+    Live &mdash; updating automatically while deployments are active.
+</p>
+
+<script>
+(function () {
+    var FALLBACK_MS = 60000;  // poll every 60 s when SignalR is not connected
+    var fallbackTimer = null;
+
+    function active() {
+        var m = document.getElementById('jobsActive');
+        return m && m.dataset.active === '1';
+    }
+
+    async function refresh() {
+        var openIds = Array.prototype.map.call(
+            document.querySelectorAll('#jobsTable tr.collapse.show'), function (e) { return e.id; });
+        var sy = window.scrollY;
+
+        try {
+            var res = await fetch(window.location.href, { cache: 'no-store', credentials: 'same-origin' });
+            if (res.ok) {
+                var doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+                var nb = doc.querySelector('#jobsTable tbody');
+                var cb = document.querySelector('#jobsTable tbody');
+                if (nb && cb && nb.innerHTML !== cb.innerHTML) {
+                    cb.innerHTML = nb.innerHTML;
+                    openIds.forEach(function (id) {
+                        var el = document.getElementById(id);
+                        if (el) el.classList.add('show');
+                    });
+                }
+                var nm = doc.getElementById('jobsActive');
+                var cm = document.getElementById('jobsActive');
+                if (nm && cm) cm.dataset.active = nm.dataset.active;
+                var ls = document.getElementById('liveStatus');
+                if (ls) ls.style.display = active() ? '' : 'none';
+            }
+        } catch (e) { /* transient */ }
+
+        window.scrollTo(0, sy);
+        scheduleFallback();
+    }
+
+    function scheduleFallback() {
+        clearTimeout(fallbackTimer);
+        if (!active()) return;
+        // Only use the timer fallback when SignalR is not connected
+        var hubConnected = window.deployHub &&
+                           window.deployHub.state === signalR.HubConnectionState.Connected;
+        if (!hubConnected) {
+            fallbackTimer = setTimeout(refresh, FALLBACK_MS);
+        }
+    }
+
+    // SignalR push: instant update whenever any job changes
+    if (window.deployHub) {
+        window.deployHub.on('JobUpdated', function () {
+            clearTimeout(fallbackTimer);
+            if (active()) refresh();
+        });
+
+        // Reschedule fallback when hub reconnects or disconnects
+        window.deployHub.onreconnecting(scheduleFallback);
+        window.deployHub.onreconnected(function () {
+            clearTimeout(fallbackTimer);
+            if (active()) refresh();
+        });
+    }
+
+    if (active()) scheduleFallback();
+})();
+</script>

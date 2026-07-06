@@ -1,0 +1,110 @@
+@page "{id?}"
+@model DeployManager.Pages.Drivers.UpsertModel
+@{ ViewData["Title"] = Model.IsNew ? "Add Driver Package" : "Edit Driver Package"; ViewData["ActivePage"] = "Drivers"; }
+
+<div class="row justify-content-center">
+<div class="col-lg-7">
+<form method="post">
+    <input type="hidden" asp-for="Package.Id" />
+
+    <div asp-validation-summary="All" class="alert alert-danger" style="display:@(ViewData.ModelState.IsValid ? "none" : "block")"></div>
+
+    <div class="card mb-3">
+        <div class="card-header">Driver Package Details</div>
+        <div class="card-body">
+
+            <div class="mb-3">
+                <label asp-for="Package.Name" class="form-label">Package Name <span class="text-danger">*</span></label>
+                <input asp-for="Package.Name" id="pkgName" class="form-control"
+                       placeholder="e.g. Dell OptiPlex Fleet" required autocomplete="off" />
+                <div class="form-text">Descriptive name shown when creating a deployment.</div>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Package.Description" class="form-label">Description</label>
+                <input asp-for="Package.Description" class="form-control"
+                       placeholder="e.g. iaStorAC + iaStorVD for OptiPlex 3070 and 5000" autocomplete="off" />
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Package.FolderName" class="form-label">
+                    Folder Name <span class="text-danger">*</span>
+                </label>
+                <input asp-for="Package.FolderName" id="pkgFolder" class="form-control font-monospace"
+                       placeholder="Dell OptiPlex Fleet" required autocomplete="off"
+                       pattern="[^/\\:*?><|]+" />
+                <div class="form-text">
+                    Subfolder under <code>Drivers\OS\</code> where the <code>.inf</code> files live.
+                    @if (!string.IsNullOrEmpty(Model.ServerIp))
+                    {
+                        <span>UNC path: <code>\\@Model.ServerIp\DeployManagerDrivers\<span id="folderPreview">@Model.Package.FolderName</span></code></span>
+                    }
+                </div>
+            </div>
+
+            @if (Model.InfCount > 0)
+            {
+                <div class="alert alert-success py-2 mb-3" style="font-size:.85rem">
+                    <i class="bi bi-check-circle me-1"></i>
+                    <strong>@Model.InfCount</strong> <text>.inf file(s) found in this package's folder.</text>
+                </div>
+            }
+            else if (Model.InfCount == 0)
+            {
+                <div class="alert alert-warning py-2 mb-3" style="font-size:.85rem">
+                    <i class="bi bi-exclamation-triangle me-1"></i>
+                    <text>Folder exists but contains no .inf files yet.
+                    Place driver files in </text><code>Drivers\OS\@Model.Package.FolderName\</code><text> before deploying.</text>
+                </div>
+            }
+            else if (!Model.IsNew)
+            {
+                <div class="alert alert-warning py-2 mb-3" style="font-size:.85rem">
+                    <i class="bi bi-folder-x me-1"></i>
+                    <text>Folder </text><code>Drivers\OS\@Model.Package.FolderName\</code><text> does not exist yet.
+                    Create it and place driver files inside before deploying.</text>
+                </div>
+            }
+
+            <div class="mb-1">
+                <div class="form-check form-switch">
+                    <input asp-for="Package.Enabled" class="form-check-input" type="checkbox" role="switch" />
+                    <label asp-for="Package.Enabled" class="form-check-label">Enabled</label>
+                </div>
+                <div class="form-text">Disabled packages are hidden from the deployment form.</div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save</button>
+        <a asp-page="Index" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+</div>
+</div>
+
+@section Scripts {
+<script>
+const nameInput   = document.getElementById('pkgName');
+const folderInput = document.getElementById('pkgFolder');
+const preview     = document.getElementById('folderPreview');
+const isNew       = @(Model.IsNew ? "true" : "false");
+
+function slugify(s) {
+    return s.replace(/[\\/:*?"<>|]/g, '').trim();
+}
+
+nameInput?.addEventListener('input', function () {
+    if (!isNew) return;
+    const slug = slugify(this.value);
+    if (folderInput) folderInput.value = slug;
+    if (preview)     preview.textContent = slug || '…';
+});
+
+folderInput?.addEventListener('input', function () {
+    if (preview) preview.textContent = this.value || '…';
+});
+</script>
+}

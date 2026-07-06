@@ -1,0 +1,62 @@
+# Build output
+WebApp/bin/
+WebApp/obj/
+WebApp/.vs/
+*.user
+
+# Installer build output
+Installer/bin/
+Installer/obj/
+Installer/Output/
+Installer/.stage/
+
+# Tray app build output
+Installer/TrayApp/bin/
+Installer/TrayApp/obj/
+
+# Data directory — contains secrets, machine records, job history, and audit logs.
+# The settings.json template in /Data/ is committed; everything created at runtime is not.
+Data/enc.key
+Data/deploymgr.pfx
+Data/deploymgr.pfx.key
+Data/csr-pending.key.enc
+Data/csr-pending.csr
+Data/audit.jsonl
+Data/machines.json
+Data/users.json
+Data/jobs/
+Data/keys/
+
+# Committed as empty templates only — do not commit populated versions
+# (software.json, packages.json, wims.json, drivers.json are safe to commit
+#  as they contain no secrets, but machine-specific paths in software.json
+#  should be scrubbed before committing)
+
+# WIM images — too large for source control
+images/
+*.wim
+*.wim.bak
+
+# TFTP boot tree — contains boot.wim which has baked-in server IP and WinPE password.
+# The template boot.wim (with DEPLOYMGR_SERVER_IP placeholder) will be distributed
+# via the MSI installer, not via Git.
+TFTP/Boot/boot.wim
+TFTP/Boot/sources/
+
+# .NET runtime redistributables (downloaded separately, not source)
+.NET/
+
+# Environment / secrets
+.env
+.env.local
+*.pfx
+*.key
+*.p12
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+*.suo
+*.swp
+*~

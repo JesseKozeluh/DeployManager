@@ -1,0 +1,193 @@
+@page
+@model DeployManager.Pages.Machines.IndexModel
+@{ ViewData["Title"] = "Machines"; ViewData["ActivePage"] = "Machines"; }
+
+<div class="d-flex justify-content-end mb-3">
+    <a asp-page="Upsert" class="btn btn-primary"><i class="bi bi-plus me-1"></i>Add Machine</a>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        @if (!Model.Machines.Any())
+        {
+            <div class="p-4 text-center">
+                <i class="bi bi-pc-display text-secondary" style="font-size:2rem"></i>
+                <p class="text-secondary mt-2 mb-1">No machines registered yet.</p>
+                <p class="text-secondary" style="font-size:.85rem">
+                    PXE-boot a machine on your network and it will appear here automatically,
+                    or add one manually.
+                </p>
+                <a asp-page="Upsert" class="btn btn-sm btn-primary mt-1">
+                    <i class="bi bi-plus me-1"></i>Add Machine
+                </a>
+            </div>
+        }
+        else
+        {
+            <table class="table table-hover mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th style="width:44px" title="Network status (checked on page load)"></th>
+                        <th>Hostname</th>
+                        <th>MAC Address</th>
+                        <th>Site</th>
+                        <th>Last Imaged</th>
+                        <th>Job</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var m in Model.Machines)
+                {
+                    var job = Model.ActiveJobs.GetValueOrDefault(m.MacAddress);
+                    <tr id="row-@m.Id">
+                        <td class="text-center ps-3">
+                            <span id="online-@m.Id" title="Checking...">
+                                <span class="spinner-border spinner-border-sm text-secondary" style="width:.75rem;height:.75rem;border-width:2px"></span>
+                            </span>
+                        </td>
+                        <td>
+                            <div class="fw-semibold">@(string.IsNullOrEmpty(m.Hostname) ? "—" : m.Hostname)</div>
+                            @if (!string.IsNullOrEmpty(m.Model))
+                            {
+                                <div class="text-secondary" style="font-size:.75rem">@m.Model@(!string.IsNullOrEmpty(m.SerialNumber) ? $" · {m.SerialNumber}" : "")</div>
+                            }
+                            @if (!string.IsNullOrEmpty(m.IpAddress))
+                            {
+                                <div class="text-secondary" style="font-size:.75rem">@m.IpAddress</div>
+                            }
+                        </td>
+                        <td><code>@m.MacAddress</code></td>
+                        <td>@m.Site</td>
+                        <td class="text-secondary" style="font-size:.8rem">
+                            @(m.LastImaged.HasValue ? m.LastImaged.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm") : "—")
+                        </td>
+                        <td>
+                            @if (job != null)
+                            {
+                                <span class="badge rounded-pill badge-@job.Status">@job.Status</span>
+                            }
+                            else if (m.DiscoveredAt.HasValue && (DateTime.UtcNow - m.DiscoveredAt.Value).TotalHours < 2)
+                            {
+                                <span class="badge rounded-pill" style="background:#1a3a5c;color:#58a6ff" title="Machine is waiting in WinPE for a deployment job">
+                                    <i class="bi bi-display me-1"></i>In WinPE
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="badge rounded-pill" style="background:#21262d;color:#8b949e">idle</span>
+                            }
+                        </td>
+                        <td class="text-end pe-3">
+                            <button type="button" class="btn btn-sm btn-outline-warning me-1 btn-wake"
+                                    data-id="@m.Id" title="Wake on LAN">
+                                <i class="bi bi-power"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary me-1 btn-check"
+                                    data-id="@m.Id" title="Check online status">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                            <a asp-page="/Deploy/Index" asp-route-machineId="@m.Id"
+                               class="btn btn-sm btn-outline-primary me-1" title="Re-image / Deploy">
+                                <i class="bi bi-play"></i>
+                            </a>
+                            <a asp-page="Upsert" asp-route-id="@m.Id"
+                               class="btn btn-sm btn-outline-secondary me-1" title="Edit">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form method="post" asp-page-handler="Delete" asp-route-id="@m.Id" style="display:inline">
+                                <button type="button" class="btn btn-sm btn-outline-danger" title="Delete"
+                                        data-dm-confirm="Remove machine '@Html.Raw(m.Hostname)'? This cannot be undone.">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@section Scripts {
+<script>
+function setOnline(id, state) {
+    const el = document.getElementById('online-' + id);
+    if (!el) return;
+    if (state === 'online') {
+        el.innerHTML = '<i class="bi bi-circle-fill text-success" style="font-size:.65rem" title="Online"></i>';
+    } else if (state === 'offline') {
+        el.innerHTML = '<i class="bi bi-circle-fill text-secondary" style="font-size:.65rem;opacity:.4" title="Offline"></i>';
+    } else if (state === 'waking') {
+        el.innerHTML = '<i class="bi bi-circle-fill text-warning" style="font-size:.65rem" title="Waking..."></i>';
+    } else {
+        el.innerHTML = '<span class="spinner-border spinner-border-sm text-secondary" style="width:.75rem;height:.75rem;border-width:2px"></span>';
+    }
+}
+
+// On page load — one parallel scan, no background polling
+(async function loadAllStatuses() {
+    try {
+        const res  = await fetch('?handler=Status');
+        const data = await res.json();
+        for (const [id, online] of Object.entries(data)) {
+            setOnline(id, online ? 'online' : 'offline');
+        }
+    } catch (e) {
+        console.warn('Status check failed:', e);
+    }
+})();
+
+// Wake on LAN — sends magic packet then polls that one machine every 5 s for up to 90 s
+document.querySelectorAll('.btn-wake').forEach(function(btn) {
+    btn.addEventListener('click', async function() {
+        const id = this.dataset.id;
+        this.disabled = true;
+        setOnline(id, 'waking');
+
+        try {
+            await fetch('?handler=Wake&id=' + id);
+        } catch (e) {}
+
+        let attempts = 0;
+        const poll = setInterval(async () => {
+            attempts++;
+            try {
+                const r = await fetch('?handler=Check&id=' + id);
+                const d = await r.json();
+                if (d.online) {
+                    clearInterval(poll);
+                    setOnline(id, 'online');
+                    btn.disabled = false;
+                    return;
+                }
+            } catch (e) {}
+
+            if (attempts >= 18) {   // 90 s timeout
+                clearInterval(poll);
+                setOnline(id, 'offline');
+                btn.disabled = false;
+            }
+        }, 5000);
+    });
+});
+
+// Manual check — re-pings a single machine on demand
+document.querySelectorAll('.btn-check').forEach(function(btn) {
+    btn.addEventListener('click', async function() {
+        const id = this.dataset.id;
+        this.disabled = true;
+        setOnline(id, 'checking');
+        try {
+            const r = await fetch('?handler=Check&id=' + id);
+            const d = await r.json();
+            setOnline(id, d.online ? 'online' : 'offline');
+        } catch (e) {
+            setOnline(id, 'offline');
+        }
+        this.disabled = false;
+    });
+});
+</script>
+}

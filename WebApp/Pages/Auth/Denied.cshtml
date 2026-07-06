@@ -1,0 +1,29 @@
+@page
+@model DeployManager.Pages.Auth.DeniedModel
+@{ ViewData["Title"] = "Access denied"; Layout = null; }
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Access denied — Deploy Manager</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.min.css" />
+    <style>
+        body { background:#0f1117; display:flex; justify-content:center; align-items:center; min-height:100vh; }
+        .card-box { background:#161b22; border:1px solid #30363d; border-radius:12px; padding:2.5rem; width:100%; max-width:420px; text-align:center; }
+    </style>
+</head>
+<body>
+<div class="card-box">
+    <i class="bi bi-shield-exclamation text-warning" style="font-size:2.5rem"></i>
+    <h1 class="h5 mt-3">Access denied</h1>
+    <p class="text-secondary" style="font-size:.9rem">
+        Your account isn't authorized for Deploy Manager. Sign-in succeeded, but your UPN isn't
+        registered (or is disabled). Ask an administrator to add you under <strong>Users</strong>.
+    </p>
+    <a href="/auth/login" class="btn btn-outline-secondary btn-sm mt-2">
+        <i class="bi bi-arrow-left me-1"></i>Back to sign in
+    </a>
+</div>
+</body>
+</html>

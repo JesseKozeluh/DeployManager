@@ -1,0 +1,39 @@
+@page
+@model ErrorModel
+@{ ViewData["Title"] = "Error"; Layout = null; }
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Something went wrong — Deploy Manager</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="stylesheet" href="~/lib/bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.min.css" />
+    <style>
+        body { background:#0f1117; color:#c9d1d9; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; }
+        .err-wrap { max-width:500px; text-align:center; padding:2rem 1rem; }
+        .err-icon { font-size:3rem; color:#f85149; margin-bottom:1rem; }
+        .req-id   { font-size:.72rem; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:#484f58; margin-bottom:.5rem; }
+        h1 { font-size:1.5rem; font-weight:700; color:#e6edf3; }
+    </style>
+</head>
+<body>
+<div class="err-wrap">
+    <div class="err-icon"><i class="bi bi-exclamation-triangle-fill"></i></div>
+    @if (Model.ShowRequestId)
+    {
+        <div class="req-id">Request ID: @Model.RequestId</div>
+    }
+    <h1>Something went wrong</h1>
+    <p class="text-secondary mb-4">
+        An unexpected error occurred. If this persists, check the <strong>Windows Event Log</strong>
+        (source: DeployManager) for details.
+    </p>
+    <div class="d-flex gap-3 justify-content-center">
+        <a href="/" class="btn btn-primary btn-sm"><i class="bi bi-house me-1"></i>Dashboard</a>
+        <a href="javascript:history.back()" class="btn btn-outline-secondary btn-sm">Go Back</a>
+    </div>
+    <p class="mt-4" style="font-size:.72rem; color:#484f58">Deploy Manager</p>
+</div>
+</body>
+</html>

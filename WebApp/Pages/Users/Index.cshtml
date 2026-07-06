@@ -1,0 +1,64 @@
+@page
+@model DeployManager.Pages.Users.IndexModel
+@{
+    ViewData["Title"] = "Users";
+    ViewData["ActivePage"] = "Users";
+}
+
+<div class="d-flex align-items-center mb-3">
+    <h1 class="h3 mb-0"><i class="bi bi-people me-2"></i>Users</h1>
+    <a asp-page="Upsert" class="btn btn-primary btn-sm ms-auto"><i class="bi bi-plus-lg me-1"></i>Add user</a>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        @if (!Model.Items.Any())
+        {
+            <p class="text-secondary p-3 mb-0">
+                No users registered. <a asp-page="Upsert">Add one</a> by their UPN to allow them to sign in via Entra.
+            </p>
+        }
+        else
+        {
+            <table class="table table-hover mb-0 align-middle">
+                <thead>
+                    <tr><th>Name</th><th>UPN</th><th>Role</th><th>Status</th><th class="text-end">Actions</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var u in Model.Items)
+                    {
+                        <tr>
+                            <td>@u.DisplayName</td>
+                            <td><code>@u.Upn</code></td>
+                            <td>
+                                @if (u.Role == "Administrator")
+                                { <span class="badge bg-info text-dark">Administrator</span> }
+                                else
+                                { <span class="badge bg-secondary">Operator</span> }
+                            </td>
+                            <td>
+                                @if (u.Enabled)
+                                { <span class="badge bg-success">Enabled</span> }
+                                else
+                                { <span class="badge bg-secondary">Disabled</span> }
+                            </td>
+                            <td class="text-end">
+                                <a asp-page="Upsert" asp-route-id="@u.Id" class="btn btn-outline-secondary btn-sm"><i class="bi bi-pencil"></i></a>
+                                <form method="post" asp-page-handler="Delete" asp-route-id="@u.Id" class="d-inline">
+                                    <button type="button" class="btn btn-outline-danger btn-sm"
+                                            data-dm-confirm="Remove '@u.Upn'? They will no longer be able to sign in.">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+<div class="form-text mt-2">
+    <i class="bi bi-info-circle me-1"></i>Entra proves who a user is; this list decides who's allowed in and with what role.
+    Only registered, enabled UPNs can sign in. The breakglass account always works regardless of this list.
+</div>

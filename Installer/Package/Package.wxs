@@ -1,0 +1,393 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Deploy Manager — WiX 4 / WiX 7 installer
+  Build via Build-Installer.ps1 at the repository root.
+
+  Preprocessor variables (all required, supplied by the build script):
+    WebAppStageDir   – full path to staged WebApp publish output (trailing \)
+    TrayAppDir       – full path to TrayApp publish output (trailing \)
+    ScriptsDir       – full path to Scripts\ directory (trailing \)
+    VendorTftpDir    – full path to Installer\Vendor\tftpd64\ (trailing \)
+    IpxeVendorDir    – full path to Installer\Vendor\ipxe\ (trailing \)
+    PackageDir       – full path to this Package\ directory (trailing \)
+    DocsDir          – full path to the Docs\ directory (trailing \)
+    ProductVersion   – semver string, e.g. "1.0.0"
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:fire="http://wixtoolset.org/schemas/v4/wxs/firewall"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package Name="Deploy Manager"
+           Manufacturer="Jesse Kozeluh"
+           Version="$(ProductVersion)"
+           UpgradeCode="7E5A8F3C-1D4B-4A2E-9C6F-0B3D7E9A5C21"
+           Language="1033"
+           Codepage="1252"
+           Compressed="yes"
+           InstallerVersion="500">
+
+    <!-- Add/Remove Programs icon -->
+    <Icon Id="DmIcon.ico" SourceFile="$(PackageDir)..\..\Assets\deploymgr.ico" />
+    <Property Id="ARPPRODUCTICON" Value="DmIcon.ico" />
+
+    <!-- Replace older versions; block downgrade -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Deploy Manager is already installed. Uninstall it first." />
+
+    <!-- Single embedded CAB for portability -->
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- ── Wizard UI ────────────────────────────────────────────────────── -->
+    <!--
+      Full installer wizard: Welcome -> Licence -> Install location ->
+      Ready -> Progress -> Finish. Silent installs (/qn, /qb) bypass it,
+      so scripted and GPO deployment behave exactly as before.
+    -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(PackageDir)License.rtf" />
+    <WixVariable Id="WixUIBannerBmp"  Value="$(PackageDir)banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp"  Value="$(PackageDir)dialog.bmp" />
+
+    <!-- Finish page: optional tray launch (checkbox) + setup guide (always on
+         fresh installs). WixShellExec reads WixShellExecTarget at DoAction
+         time, so the ordered Publish events retarget it between the two. -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT"
+              Value="Launch the Deploy Manager tray monitor" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <CustomAction Id="LaunchTrayApp"
+                  DllEntry="WixShellExec"
+                  Impersonate="yes"
+                  BinaryRef="Wix4UtilCA_X64" />
+    <CustomAction Id="OpenSetupGuide"
+                  DllEntry="WixShellExec"
+                  Impersonate="yes"
+                  BinaryRef="Wix4UtilCA_X64" />
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Order="1"
+               Property="WixShellExecTarget"
+               Value="[TRAYFOLDER]DeployManagerTray.exe"
+               Condition="NOT Installed" />
+      <Publish Dialog="ExitDialog" Control="Finish" Order="2"
+               Event="DoAction"
+               Value="LaunchTrayApp"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed" />
+      <Publish Dialog="ExitDialog" Control="Finish" Order="3"
+               Property="WixShellExecTarget"
+               Value="[DOCSFOLDER]index.html"
+               Condition="NOT Installed" />
+      <Publish Dialog="ExitDialog" Control="Finish" Order="4"
+               Event="DoAction"
+               Value="OpenSetupGuide"
+               Condition="NOT Installed" />
+    </UI>
+
+
+    <!-- ── Directory structure ──────────────────────────────────────────── -->
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="DeployManager">
+        <!-- PowerShell scripts used by the service and tray app -->
+        <Directory Id="SCRIPTSFOLDER" Name="scripts" />
+        <!-- tftpd64 service edition + ini (reads tftpd32.ini from its own dir) -->
+        <Directory Id="TFTPBINFOLDER" Name="tftp" />
+        <!-- TrayApp full publish output (self-contained; needs all its files) -->
+        <Directory Id="TRAYFOLDER" Name="tray" />
+        <!-- Setup & administration guide (HTML) -->
+        <Directory Id="DOCSFOLDER" Name="docs" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DATAROOTFOLDER" Name="DeployManager">
+        <!-- Mutable data: SQLite DB, settings.json, audit.jsonl, keys/ -->
+        <Directory Id="DATAFOLDER" Name="data">
+          <Directory Id="JOBSFOLDER" Name="jobs">
+            <!-- WinPE polls physical JSON files here over HTTP -->
+            <Directory Id="HTTPJOBFOLDER" Name="http" />
+          </Directory>
+        </Directory>
+        <!-- WIM image storage -->
+        <Directory Id="IMAGESFOLDER" Name="images" />
+        <!-- Driver package storage -->
+        <Directory Id="DRIVERSFOLDER" Name="drivers" />
+        <!-- TFTP root served by tftpd64; user copies boot.wim here -->
+        <Directory Id="DATATFTPFOLDER" Name="tftp">
+          <Directory Id="DATATFTPBOOTFOLDER" Name="Boot" />
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <!-- ── WebApp published binaries ─────────────────────────────────── -->
+    <!--
+      The build script removes appsettings*.json from the stage dir before
+      build so that we install our own template version below.
+      DeployManager.exe is EXCLUDED here — it must be installed by the
+      service component below, because MSI registers a service against its
+      component's key FILE. A registry KeyPath means no binary to register,
+      and Windows Installer silently skips the service creation, then errors
+      trying to start the nonexistent service.
+    -->
+    <ComponentGroup Id="WebAppFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(WebAppStageDir)**">
+        <Exclude Files="$(WebAppStageDir)DeployManager.exe" />
+      </Files>
+    </ComponentGroup>
+
+    <!-- ── appsettings.json (our template, overwrites any publish copy) ── -->
+    <Component Id="AppSettingsComp" Directory="INSTALLFOLDER">
+      <File Id="AppSettingsJson"
+            Name="appsettings.json"
+            Source="$(PackageDir)appsettings.install.json"
+            KeyPath="yes" />
+    </Component>
+
+    <!-- ── Windows Service registration ────────────────────────────────── -->
+    <!--
+      The service executable is this component's KeyPath file — an MSI
+      requirement for ServiceInstall to register the service.
+    -->
+    <Component Id="DeployManagerServiceComp" Directory="INSTALLFOLDER">
+      <File Id="DeployManagerExe"
+            Name="DeployManager.exe"
+            Source="$(WebAppStageDir)DeployManager.exe"
+            KeyPath="yes" />
+      <ServiceInstall Id="DeployManagerSvc"
+                      Name="DeployManager"
+                      DisplayName="Deploy Manager"
+                      Description="Windows imaging and deployment automation service."
+                      Account="LocalSystem"
+                      Start="auto"
+                      Type="ownProcess"
+                      Vital="yes"
+                      Interactive="no" />
+      <ServiceControl Id="DeployManagerControl"
+                      Name="DeployManager"
+                      Start="install"
+                      Stop="both"
+                      Remove="uninstall"
+                      Wait="no" />
+    </Component>
+
+    <!-- ── PowerShell scripts ───────────────────────────────────────────── -->
+    <ComponentGroup Id="ScriptFiles" Directory="SCRIPTSFOLDER">
+      <Component Id="UpdateBootWimComp">
+        <File Name="Update-BootWim.ps1"
+              Source="$(ScriptsDir)Update-BootWim.ps1"
+              KeyPath="yes" />
+      </Component>
+      <Component Id="StartOsDeployComp">
+        <File Name="Start-OSDeploy.ps1"
+              Source="$(ScriptsDir)TaskSequences\Start-OSDeploy.ps1"
+              KeyPath="yes" />
+      </Component>
+      <Component Id="StartPostInstallComp">
+        <File Name="Start-PostInstall.ps1"
+              Source="$(ScriptsDir)TaskSequences\Start-PostInstall.ps1"
+              KeyPath="yes" />
+      </Component>
+      <Component Id="StageLocalWinPEComp">
+        <File Name="Stage-LocalWinPE.ps1"
+              Source="$(ScriptsDir)Stage-LocalWinPE.ps1"
+              KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- ── TrayApp ──────────────────────────────────────────────────────── -->
+    <!--
+      The tray app is published self-contained as multiple files. The exe is
+      only an apphost stub — without DeployManagerTray.dll and the runtime
+      files alongside it, it exits immediately with "The application to
+      execute does not exist". Harvest the whole publish directory.
+    -->
+    <ComponentGroup Id="TrayAppFiles" Directory="TRAYFOLDER">
+      <Files Include="$(TrayAppDir)**" />
+    </ComponentGroup>
+
+    <!-- ── Documentation ────────────────────────────────────────────────── -->
+    <Component Id="DocsComp" Directory="DOCSFOLDER">
+      <File Id="SetupGuideHtml"
+            Name="index.html"
+            Source="$(DocsDir)index.html"
+            KeyPath="yes" />
+    </Component>
+
+    <!-- Start the tray app automatically at user logon -->
+    <Component Id="TrayAutorunComp" Directory="INSTALLFOLDER">
+      <RegistryValue Root="HKLM"
+                     Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+                     Name="DeployManagerTray"
+                     Value="&quot;[TRAYFOLDER]DeployManagerTray.exe&quot;"
+                     Type="string"
+                     KeyPath="yes" />
+    </Component>
+
+    <!-- ── tftpd64 ──────────────────────────────────────────────────────── -->
+    <!--
+      tftpd64_svc.exe is the native-service edition (v4.74 from GitHub).
+      It reads tftpd32.ini (the legacy filename) from its own directory.
+      The ini BaseDirectory points to %ProgramData%\DeployManager\tftp.
+    -->
+    <Component Id="Tftpd64FilesComp" Guid="A3F8B2D1-7E4C-4A9F-B5D6-8C1E3F7A2B04" Directory="TFTPBINFOLDER">
+      <File Name="tftpd32.chm"
+            Source="$(VendorTftpDir)tftpd32.chm"
+            KeyPath="yes" />
+      <File Id="Tftpd64IniFile"
+            Name="tftpd32.ini"
+            Source="$(PackageDir)tftpd64.ini" />
+      <File Name="LICENSE.txt"
+            Source="$(VendorTftpDir)LICENSE.txt" />
+    </Component>
+
+    <Component Id="Tftpd64SvcComp" Directory="TFTPBINFOLDER">
+      <File Id="Tftpd64SvcExeFile"
+            Name="tftpd64_svc.exe"
+            Source="$(VendorTftpDir)tftpd64_svc.exe"
+            KeyPath="yes" />
+      <ServiceInstall Id="Tftpd64Svc"
+                      Name="Tftpd64"
+                      DisplayName="tftpd64 - TFTP Server"
+                      Description="TFTP server for PXE boot. Installed by Deploy Manager."
+                      Account="LocalSystem"
+                      Start="auto"
+                      Type="ownProcess"
+                      Vital="yes"
+                      Interactive="no" />
+      <ServiceControl Id="Tftpd64Control"
+                      Name="Tftpd64"
+                      Start="install"
+                      Stop="both"
+                      Remove="uninstall"
+                      Wait="no" />
+    </Component>
+
+    <!-- ── Firewall rules ───────────────────────────────────────────────── -->
+    <Component Id="FirewallComp" Directory="INSTALLFOLDER">
+      <RegistryValue Root="HKLM"
+                     Key="SOFTWARE\DeployManager"
+                     Name="FirewallInstalled"
+                     Value="1"
+                     Type="integer"
+                     KeyPath="yes" />
+      <!-- HTTP: WinPE polls job files -->
+      <fire:FirewallException Id="FW_HTTP"
+                              Name="DeployManager HTTP (8080)"
+                              Port="8080"
+                              Protocol="tcp"
+                              Profile="all"
+                              Scope="any" />
+      <!-- HTTPS: web UI and API -->
+      <fire:FirewallException Id="FW_HTTPS"
+                              Name="DeployManager HTTPS (8090)"
+                              Port="8090"
+                              Protocol="tcp"
+                              Profile="all"
+                              Scope="any" />
+      <!-- TFTP: PXE boot initial request port -->
+      <fire:FirewallException Id="FW_TFTP"
+                              Name="DeployManager TFTP (UDP 69)"
+                              Port="69"
+                              Protocol="udp"
+                              Profile="all"
+                              Scope="any" />
+      <!-- TFTP: tftpd64 program rule — TFTP data transfers use random
+           ephemeral ports (not just 69). Without a program-based rule the
+           server binds port 69 but data transfers are silently blocked by
+           Windows Firewall when running as a service (no interactive
+           "allow this app" prompt under LocalSystem / Session 0). -->
+      <fire:FirewallException Id="FW_TFTPD64_APP"
+                              Name="DeployManager TFTP Server (tftpd64)"
+                              Program="[#Tftpd64SvcExeFile]"
+                              Protocol="udp"
+                              Profile="all"
+                              Scope="any" />
+    </Component>
+
+    <!-- ── ProgramData directory tree ──────────────────────────────────── -->
+    <!--
+      CreateFolder creates the directory. The service (LocalSystem) needs
+      full access to write settings, the database, audit log, and job files.
+    -->
+    <Component Id="DataRootDirComp" Guid="486DFDDE-4C91-4BD4-B545-20F56087B456" Directory="DATAROOTFOLDER">
+      <CreateFolder>
+        <util:PermissionEx User="LocalSystem"
+                           GenericAll="yes" />
+        <util:PermissionEx User="Administrators"
+                           GenericAll="yes" />
+      </CreateFolder>
+    </Component>
+
+    <Component Id="DataDirComp" Guid="04756810-C24E-4D1E-9E1D-B33B015C7E19" Directory="DATAFOLDER">
+      <CreateFolder />
+    </Component>
+
+    <Component Id="JobsDirComp" Guid="ACCDC928-0FD1-4BB5-B03C-1F98384BD263" Directory="JOBSFOLDER">
+      <CreateFolder />
+    </Component>
+
+    <Component Id="HttpJobDirComp" Guid="BDFDD444-4A9F-4B0E-9CEC-E968BCACDA84" Directory="HTTPJOBFOLDER">
+      <CreateFolder />
+    </Component>
+
+    <Component Id="ImagesDirComp" Guid="99C04F91-F46B-4232-A5C2-A14D8812F981" Directory="IMAGESFOLDER">
+      <CreateFolder />
+    </Component>
+
+    <Component Id="DriversDirComp" Guid="CEA2838F-15B3-42CA-8FA7-818A1ADAD4AF" Directory="DRIVERSFOLDER">
+      <CreateFolder />
+    </Component>
+
+    <Component Id="DataTftpDirComp" Guid="371F9316-DE0C-4EF8-93EB-B469681C7105" Directory="DATATFTPFOLDER">
+      <CreateFolder />
+    </Component>
+
+    <Component Id="DataTftpBootDirComp" Guid="E89E67E9-9173-4ECE-BEC8-B0DAE271778F" Directory="DATATFTPBOOTFOLDER">
+      <CreateFolder />
+    </Component>
+
+    <!-- ── iPXE Secure Boot chain + wimboot (pre-staged in the TFTP root) ── -->
+    <!--
+      Bundling these means PXE boot works straight after install with no manual
+      download step. scripts\Get-IpxeBinaries.ps1 remains available to pull a
+      newer signed iPXE release on demand; it overwrites these files in place.
+      MSI preserves user-modified copies of these unversioned files on
+      repair/upgrade, so re-running the updater is not undone by a later MSI.
+    -->
+    <Component Id="IpxeBinariesComp" Guid="7B1E9D42-3A6C-4F8E-9B0D-51C2A7E4F630" Directory="DATATFTPFOLDER">
+      <File Id="IpxeShimEfi"    Name="ipxe-shim.efi"    Source="$(IpxeVendorDir)ipxe-shim.efi" KeyPath="yes" />
+      <File Id="IpxeEfi"        Name="ipxe.efi"         Source="$(IpxeVendorDir)ipxe.efi" />
+      <File Id="SnponlyShimEfi" Name="snponly-shim.efi" Source="$(IpxeVendorDir)snponly-shim.efi" />
+      <File Id="SnponlyEfi"     Name="snponly.efi"      Source="$(IpxeVendorDir)snponly.efi" />
+      <File Id="UndionlyKpxe"   Name="undionly.kpxe"    Source="$(IpxeVendorDir)undionly.kpxe" />
+      <File Id="WimbootFile"    Name="wimboot"          Source="$(IpxeVendorDir)wimboot" />
+      <File Id="IpxeVersionTxt" Name="VERSION.txt"      Source="$(IpxeVendorDir)VERSION.txt" />
+      <!-- autoexec.ipxe — iPXE loads this automatically via TFTP after starting.
+           It chains to the HTTP boot.ipxe script on this server, avoiding the need
+           for DHCP user-class policies to break the PXE→iPXE boot loop. -->
+      <File Id="AutoexecIpxe"   Name="autoexec.ipxe"    Source="$(PackageDir)autoexec.ipxe" />
+    </Component>
+
+    <!-- ── Feature ─────────────────────────────────────────────────────── -->
+    <Feature Id="ProductFeature" Title="Deploy Manager" Level="1">
+      <ComponentGroupRef Id="WebAppFiles" />
+      <ComponentGroupRef Id="ScriptFiles" />
+      <ComponentRef Id="AppSettingsComp" />
+      <ComponentRef Id="DeployManagerServiceComp" />
+      <ComponentGroupRef Id="TrayAppFiles" />
+      <ComponentRef Id="TrayAutorunComp" />
+      <ComponentRef Id="DocsComp" />
+      <ComponentRef Id="Tftpd64FilesComp" />
+      <ComponentRef Id="Tftpd64SvcComp" />
+      <ComponentRef Id="FirewallComp" />
+      <ComponentRef Id="DataRootDirComp" />
+      <ComponentRef Id="DataDirComp" />
+      <ComponentRef Id="JobsDirComp" />
+      <ComponentRef Id="HttpJobDirComp" />
+      <ComponentRef Id="ImagesDirComp" />
+      <ComponentRef Id="DriversDirComp" />
+      <ComponentRef Id="DataTftpDirComp" />
+      <ComponentRef Id="DataTftpBootDirComp" />
+      <ComponentRef Id="IpxeBinariesComp" />
+    </Feature>
+
+  </Package>
+</Wix>

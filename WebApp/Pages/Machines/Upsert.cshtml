@@ -1,0 +1,162 @@
+@page "{id?}"
+@model DeployManager.Pages.Machines.UpsertModel
+@{ ViewData["Title"] = Model.IsNew ? "Add Machine" : "Edit Machine"; ViewData["ActivePage"] = "Machines"; }
+
+<div class="row justify-content-center">
+<div class="col-lg-7">
+
+@if (Model.IsNew)
+{
+    <!-- Auto-discover card -->
+    <div class="card mb-3">
+        <div class="card-header"><i class="bi bi-search me-2"></i>Look Up Device</div>
+        <div class="card-body">
+            <p class="text-secondary mb-3" style="font-size:.875rem">
+                Enter the hostname or IP address of a domain-joined machine to auto-fill its details.
+            </p>
+            <div class="d-flex gap-2">
+                <input id="lookupInput" class="form-control font-monospace"
+                       placeholder="PC-NAME or 192.168.1.100" style="max-width:280px" />
+                <button type="button" id="lookupBtn" class="btn btn-outline-primary">
+                    <i class="bi bi-search me-1"></i>Look Up
+                </button>
+            </div>
+            <div id="lookupStatus" class="mt-2" style="font-size:.85rem;min-height:1.4em"></div>
+        </div>
+    </div>
+}
+
+<!-- Main form card -->
+<div class="card">
+<div class="card-header">@ViewData["Title"]</div>
+<div class="card-body">
+<form method="post">
+    <input type="hidden" asp-for="Machine.Id" />
+    <div asp-validation-summary="All" class="alert alert-danger" style="display:@(ViewData.ModelState.IsValid ? "none" : "block")"></div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-6">
+            <label asp-for="Machine.Hostname" class="form-label">Hostname <span class="text-danger">*</span></label>
+            <input asp-for="Machine.Hostname" id="fieldHostname" class="form-control" placeholder="CORP-PC001" required />
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Machine.MacAddress" class="form-label">MAC Address <span class="text-danger">*</span></label>
+            <input asp-for="Machine.MacAddress" id="fieldMac" class="form-control font-monospace"
+                   placeholder="AA:BB:CC:DD:EE:FF" required />
+            <div class="form-text">Used for Wake on LAN and job pickup</div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-6">
+            <label asp-for="Machine.IpAddress" class="form-label">IP Address</label>
+            <input asp-for="Machine.IpAddress" id="fieldIp" class="form-control font-monospace"
+                   placeholder="192.168.x.x" />
+            <div class="form-text">Used for PSRemoting PXE reboot</div>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Machine.Site" class="form-label">Site <span class="text-danger">*</span></label>
+            <select asp-for="Machine.Site" class="form-select" id="siteSelect" required>
+                <option value="">— Select site —</option>
+                @foreach (var site in Model.Sites)
+                {
+                    <option value="@site.Name" data-ou="@site.OU">@site.Name</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Machine.OU" class="form-label">Active Directory OU</label>
+        <input asp-for="Machine.OU" class="form-control font-monospace" id="ouInput" />
+        <div class="form-text">Auto-filled from site selection. Override if needed.</div>
+    </div>
+
+    <div class="mb-4">
+        <label asp-for="Machine.Notes" class="form-label">Notes</label>
+        <textarea asp-for="Machine.Notes" class="form-control" rows="2" placeholder="Optional notes"></textarea>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save</button>
+        <a asp-page="Index" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+</div>
+</div>
+
+</div>
+</div>
+
+@section Scripts {
+<script>
+const siteOUs = {};
+@foreach (var site in Model.Sites)
+{
+    <text>siteOUs['@site.Name'] = '@Html.Raw(site.OU)';</text>
+}
+document.getElementById('siteSelect').addEventListener('change', function() {
+    const ou = siteOUs[this.value] || '';
+    const ouField = document.getElementById('ouInput');
+    if (!ouField.dataset.manuallyEdited) ouField.value = ou;
+});
+document.getElementById('ouInput').addEventListener('input', function() {
+    this.dataset.manuallyEdited = 'true';
+});
+// Pre-select site if editing
+const currentSite = '@Model.Machine.Site';
+if (currentSite) {
+    document.getElementById('siteSelect').value = currentSite;
+}
+
+// ── Lookup ──────────────────────────────────────────────
+const lookupBtn   = document.getElementById('lookupBtn');
+const lookupInput = document.getElementById('lookupInput');
+const lookupStatus = document.getElementById('lookupStatus');
+
+if (lookupBtn) {
+    async function doLookup() {
+        const host = lookupInput.value.trim();
+        if (!host) { lookupInput.focus(); return; }
+
+        lookupBtn.disabled = true;
+        lookupStatus.innerHTML = '<span class="text-secondary"><span class="spinner-border spinner-border-sm me-1"></span>Looking up ' + host + '…</span>';
+
+        try {
+            const res = await fetch(`?handler=Lookup&host=${encodeURIComponent(host)}`);
+            const data = await res.json();
+
+            if (data.error) {
+                lookupStatus.innerHTML = `<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>${data.error}</span>`;
+            } else {
+                document.getElementById('fieldHostname').value = data.hostname  || '';
+                document.getElementById('fieldMac').value      = data.macAddress || '';
+                document.getElementById('fieldIp').value       = data.ipAddress  || '';
+                // Auto-select the site from the IP→subnet mapping, then fire change to fill the OU.
+                if (data.site) {
+                    const siteSel = document.getElementById('siteSelect');
+                    siteSel.value = data.site;
+                    if (siteSel.value === data.site) {
+                        siteSel.dispatchEvent(new Event('change'));
+                    } else if (data.ou) {
+                        document.getElementById('ouInput').value = data.ou;
+                    }
+                }
+                if (data.warning) {
+                    lookupStatus.innerHTML = `<span class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>${data.warning}</span>`;
+                } else {
+                    lookupStatus.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>Found <strong>${data.hostname}</strong> — MAC: <code>${data.macAddress}</code> — IP: <code>${data.ipAddress || 'unknown'}</code>. Select the site below and save.</span>`;
+                }
+            }
+        } catch (e) {
+            lookupStatus.innerHTML = `<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Request failed: ${e.message}</span>`;
+        } finally {
+            lookupBtn.disabled = false;
+        }
+    }
+
+    lookupBtn.addEventListener('click', doLookup);
+    lookupInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doLookup(); } });
+}
+</script>
+}

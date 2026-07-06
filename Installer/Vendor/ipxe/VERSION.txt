@@ -1,0 +1,14 @@
+iPXE UEFI Secure Boot chain + wimboot, bundled with Deploy Manager.
+
+Source : https://github.com/ipxe/ipxe/releases/tag/v2.0.0  (ipxeboot.tar.gz)
+         https://github.com/ipxe/wimboot/releases/latest      (wimboot)
+iPXE    : v2.0.0
+
+ipxe-shim.efi    Microsoft-signed shim (UEFI boot file; DHCP option 67). Loads ipxe.efi.
+ipxe.efi         iPXE, full drivers, signed by the iPXE Secure Boot CA.
+snponly-shim.efi Microsoft-signed shim. Loads snponly.efi.
+snponly.efi      iPXE, SNP-only driver, signed by the iPXE Secure Boot CA.
+undionly.kpxe    Legacy BIOS iPXE.
+wimboot          Secure Boot-capable WIM loader.
+
+To update to a newer signed release, run scripts\Get-IpxeBinaries.ps1 on the server.

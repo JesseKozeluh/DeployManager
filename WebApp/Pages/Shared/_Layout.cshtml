@@ -1,0 +1,336 @@
+@using DeployManager.Services
+@inject ISettingsService SettingsSvc
+@{
+    var orgName    = SettingsSvc.Get().OrgName;
+    if (string.IsNullOrEmpty(orgName)) orgName = "Deploy Manager";
+    var appVersion = typeof(DeployManager.Services.DataStore).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+}
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] — @orgName</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png">
+    <link rel="stylesheet" href="~/lib/bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.min.css" />
+    <style>
+        html, body { height: 100%; }
+        body { display: flex; overflow-x: hidden; background: #0f1117; }
+
+        /* Sidebar */
+        #sidebar {
+            width: 230px; min-height: 100vh; flex-shrink: 0;
+            background: #161b22; border-right: 1px solid #30363d;
+            display: flex; flex-direction: column;
+        }
+        #sidebar .brand {
+            padding: 1.25rem 1rem 1rem;
+            border-bottom: 1px solid #30363d;
+        }
+        #sidebar .brand h6 { color: #58a6ff; margin: 0; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; }
+        #sidebar .brand p  { color: #8b949e; margin: 0; font-size: .8rem; }
+        #sidebar .nav-link {
+            color: #c9d1d9; padding: .5rem 1rem; border-radius: 6px;
+            margin: 1px 8px; display: flex; align-items: center; gap: .6rem;
+            font-size: .875rem;
+        }
+        #sidebar .nav-link:hover { color: #fff; background: #21262d; }
+        #sidebar .nav-link.active { color: #58a6ff; background: #1f3a5f; }
+        #sidebar .nav-link i { font-size: 1rem; width: 18px; text-align: center; }
+        #sidebar .nav-section {
+            color: #8b949e; font-size: .7rem; letter-spacing: .08em;
+            text-transform: uppercase; padding: 1rem 1rem .25rem;
+        }
+        #sidebar .deploy-btn {
+            margin: 1rem; padding: .6rem 1rem;
+            background: #238636; border: none; border-radius: 6px;
+            color: #fff; font-size: .875rem; font-weight: 600;
+            text-decoration: none; display: flex; align-items: center; gap: .5rem;
+        }
+        #sidebar .deploy-btn:hover { background: #2ea043; color: #fff; }
+
+        /* Main content */
+        #main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        #topbar {
+            background: #161b22; border-bottom: 1px solid #30363d;
+            padding: .75rem 1.5rem; display: flex; align-items: center; gap: 1rem;
+        }
+        #topbar h1 { margin: 0; font-size: 1.1rem; font-weight: 600; color: #e6edf3; }
+        #content { padding: 1.5rem; flex: 1; }
+
+        /* Cards */
+        .card { background: #161b22; border: 1px solid #30363d; }
+        .card-header { background: #21262d; border-bottom: 1px solid #30363d; }
+        .table { color: #c9d1d9; }
+        .table thead th { border-color: #30363d; color: #8b949e; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+        .table tbody tr:hover { background: #21262d; }
+        .table td, .table th { border-color: #30363d; vertical-align: middle; }
+        .badge-pending   { background: #388bfd22; color: #58a6ff; border: 1px solid #388bfd55; }
+        .badge-imaging   { background: #d2992222; color: #e3b341; border: 1px solid #d2992255; }
+        .badge-complete  { background: #23863622; color: #3fb950; border: 1px solid #23863655; }
+        .badge-error     { background: #da363622; color: #f85149; border: 1px solid #da363655; }
+        .badge-timeout   { background: #b5620622; color: #f0883e; border: 1px solid #b5620655; }
+        .form-control, .form-select { background: #0d1117; border-color: #30363d; color: #c9d1d9; }
+        .form-control:focus, .form-select:focus { background: #0d1117; border-color: #58a6ff; color: #e6edf3; box-shadow: 0 0 0 3px rgba(88,166,255,.15); }
+        .btn-primary { background: #238636; border-color: #238636; }
+        .btn-primary:hover { background: #2ea043; border-color: #2ea043; }
+        .sortable-item { cursor: grab; user-select: none; }
+        .sortable-item:active { cursor: grabbing; }
+        .sortable-ghost { opacity: .4; }
+        .stat-card { text-align: center; padding: 1.5rem; }
+        .stat-card .num { font-size: 2.5rem; font-weight: 700; color: #58a6ff; line-height: 1; }
+        .stat-card .lbl { color: #8b949e; font-size: .8rem; margin-top: .25rem; }
+    </style>
+</head>
+<body>
+
+<nav id="sidebar">
+    <div class="brand">
+        <h6><svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" width="22" height="22" style="vertical-align:-.3em;margin-right:.4rem"><defs><linearGradient id="dm-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2d5f8a"/><stop offset="100%" stop-color="#58a6ff"/></linearGradient></defs><rect width="256" height="256" rx="42" fill="url(#dm-bg)"/><text x="128" y="176" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-weight="700" font-size="132" fill="#fff">DM</text></svg>Deploy Manager</h6>
+        <p>@orgName</p>
+    </div>
+
+    <a asp-page="/Deploy/Index" class="deploy-btn mt-3">
+        <i class="bi bi-lightning-charge-fill"></i> New Deployment
+    </a>
+
+    <div class="nav-section">Overview</div>
+    <a asp-page="/Index" class="nav-link @(ViewData["ActivePage"] as string == "Dashboard" ? "active" : "")">
+        <i class="bi bi-speedometer2"></i> Dashboard
+    </a>
+    <a asp-page="/Jobs/Index" class="nav-link @(ViewData["ActivePage"] as string == "Jobs" ? "active" : "")">
+        <i class="bi bi-list-task"></i> Jobs
+    </a>
+
+    <div class="nav-section">Configuration</div>
+    <a asp-page="/Machines/Index" class="nav-link @(ViewData["ActivePage"] as string == "Machines" ? "active" : "")">
+        <i class="bi bi-pc-display"></i> Machines
+    </a>
+    <a asp-page="/Packages/Index" class="nav-link @(ViewData["ActivePage"] as string == "Packages" ? "active" : "")">
+        <i class="bi bi-box-seam"></i> Packages
+    </a>
+    <a asp-page="/Software/Index" class="nav-link @(ViewData["ActivePage"] as string == "Software" ? "active" : "")">
+        <i class="bi bi-app"></i> Software
+    </a>
+    <a asp-page="/Images/Index" class="nav-link @(ViewData["ActivePage"] as string == "Images" ? "active" : "")">
+        <i class="bi bi-disc"></i> WIM Images
+    </a>
+    <a asp-page="/Drivers/Index" class="nav-link @(ViewData["ActivePage"] as string == "Drivers" ? "active" : "")">
+        <i class="bi bi-cpu"></i> Drivers
+    </a>
+
+    <div class="nav-section">System</div>
+    <a asp-page="/Settings/Index" class="nav-link @(ViewData["ActivePage"] as string == "Settings" ? "active" : "")">
+        <i class="bi bi-gear"></i> Settings
+    </a>
+    <a asp-page="/Users/Index" class="nav-link @(ViewData["ActivePage"] as string == "Users" ? "active" : "")">
+        <i class="bi bi-people"></i> Users
+    </a>
+    <a asp-page="/Settings/Sites" class="nav-link @(ViewData["ActivePage"] as string == "Sites" ? "active" : "")">
+        <i class="bi bi-map"></i> Sites
+    </a>
+    <a asp-page="/Settings/Certificate" class="nav-link @(ViewData["ActivePage"] as string == "Certificate" ? "active" : "")">
+        <i class="bi bi-shield-lock"></i> Certificate
+    </a>
+    <a asp-page="/Settings/BootImage" class="nav-link @(ViewData["ActivePage"] as string == "BootImage" ? "active" : "")">
+        <i class="bi bi-hdd-fill"></i> Boot Image
+    </a>
+    <a asp-page="/Audit/Index" class="nav-link @(ViewData["ActivePage"] as string == "Audit" ? "active" : "")">
+        <i class="bi bi-journal-text"></i> Audit Log
+    </a>
+
+    <div style="flex:1"></div>
+    <div style="border-top:1px solid #30363d; padding:.5rem 0;">
+        <a href="/docs/index.html" target="_blank" rel="noopener" class="nav-link">
+            <i class="bi bi-book"></i> Setup Guide
+        </a>
+    </div>
+</nav>
+
+<div id="main">
+    <div id="topbar">
+        <h1>@(ViewData["Title"] ?? "Deploy Manager")</h1>
+        @if (ViewData["Subtitle"] != null)
+        {
+            <span class="text-secondary" style="font-size:.85rem">@ViewData["Subtitle"]</span>
+        }
+        <div class="ms-auto">
+            <a asp-page="/auth/login" asp-page-handler="Logout" class="text-secondary" style="font-size:.8rem">
+                <i class="bi bi-box-arrow-right"></i> Sign out
+            </a>
+        </div>
+    </div>
+    <div id="content">
+        @RenderBody()
+    </div>
+    <footer style="border-top:1px solid #30363d; padding:.45rem 1.5rem; background:#161b22; font-size:.72rem; color:#484f58; display:flex; align-items:center; gap:1.25rem;">
+        <span>Deploy Manager <span>v@(appVersion)</span></span>
+        <a asp-page="/Audit/Index" class="text-secondary" style="text-decoration:none">Audit Log</a>
+        <a href="/health" class="text-secondary" style="text-decoration:none" target="_blank" rel="noopener">Health</a>
+    </footer>
+</div>
+
+<script src="~/lib/bootstrap/js/bootstrap.bundle.min.js"></script>
+<script src="~/lib/sortablejs/Sortable.min.js"></script>
+<script src="~/lib/microsoft-signalr/signalr.min.js"></script>
+<script>
+// Establish a persistent SignalR connection shared by all pages.
+// Each page subscribes to "JobUpdated" events via window.deployHub.on(...).
+(function () {
+    var conn = new signalR.HubConnectionBuilder()
+        .withUrl('/deploy-hub')
+        .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
+        .configureLogging(signalR.LogLevel.Warning)
+        .build();
+
+    window.deployHub = conn;
+
+    function start() {
+        conn.start().catch(function () {
+            // Silently ignore — withAutomaticReconnect handles retries.
+            // Failure is expected on the login page or during setup.
+        });
+    }
+
+    conn.onclose(function () { /* withAutomaticReconnect handles reconnection */ });
+    start();
+})();
+</script>
+@await RenderSectionAsync("Scripts", required: false)
+
+<!-- Session timeout warning (30-min cookie, warn at 25 min) -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999">
+    <div id="sessionToast" class="toast align-items-center" role="alert" data-bs-autohide="false"
+         style="background:#161b22;border:1px solid #d2992255;color:#c9d1d9;min-width:300px">
+        <div class="d-flex align-items-center p-3 gap-2">
+            <i class="bi bi-clock-history text-warning" style="font-size:1.25rem;flex-shrink:0"></i>
+            <div class="flex-grow-1">
+                <div class="fw-semibold" style="font-size:.875rem">Session expiring soon</div>
+                <div class="text-secondary" style="font-size:.8rem">
+                    Your session expires in <strong id="sessionCountdown">5:00</strong>.
+                </div>
+            </div>
+            <button type="button" id="sessionExtend" class="btn btn-sm btn-warning" style="flex-shrink:0">Keep me signed in</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var SESSION_MS   = 30 * 60 * 1000;  // must match ExpireTimeSpan in Program.cs
+    var WARN_BEFORE  =  5 * 60 * 1000;  // show toast 5 min before expiry
+    var pageLoadedAt = Date.now();
+    var toastEl      = document.getElementById('sessionToast');
+    var countdown    = document.getElementById('sessionCountdown');
+    var toast        = null;
+    var countdownInt = null;
+    var warned       = false;
+
+    function getToast() {
+        if (!toast) toast = new bootstrap.Toast(toastEl, { autohide: false });
+        return toast;
+    }
+
+    function fmt(ms) {
+        var s   = Math.max(0, Math.round(ms / 1000));
+        var min = Math.floor(s / 60);
+        var sec = s % 60;
+        return min + ':' + (sec < 10 ? '0' : '') + sec;
+    }
+
+    function showWarning(expiresAt) {
+        warned = true;
+        clearInterval(countdownInt);
+        countdownInt = setInterval(function () {
+            var left = expiresAt - Date.now();
+            countdown.textContent = fmt(left);
+            if (left <= 0) {
+                clearInterval(countdownInt);
+                window.location.href = '/auth/login?returnUrl=' + encodeURIComponent(window.location.pathname);
+            }
+        }, 1000);
+        countdown.textContent = fmt(expiresAt - Date.now());
+        getToast().show();
+    }
+
+    // Every 15 s: check if we're inside the warning window
+    setInterval(function () {
+        if (warned) return;
+        var elapsed = Date.now() - pageLoadedAt;
+        if (elapsed >= SESSION_MS - WARN_BEFORE) {
+            showWarning(pageLoadedAt + SESSION_MS);
+        }
+    }, 15000);
+
+    // Extend button: ping the server (slides the cookie) and reset the timer
+    document.getElementById('sessionExtend').addEventListener('click', function () {
+        fetch('/auth/refresh', { credentials: 'same-origin' })
+            .then(function (r) {
+                if (r.ok) {
+                    warned       = false;
+                    pageLoadedAt = Date.now();
+                    clearInterval(countdownInt);
+                    getToast().hide();
+                } else {
+                    // Session already expired — redirect to login
+                    window.location.href = '/auth/login?returnUrl=' + encodeURIComponent(window.location.pathname);
+                }
+            })
+            .catch(function () {
+                window.location.href = '/auth/login';
+            });
+    });
+})();
+</script>
+
+<!-- Shared delete-confirmation modal -->
+<div class="modal fade" id="dmConfirm" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content" style="background:#161b22;border:1px solid #30363d">
+            <div class="modal-header" style="border-bottom:1px solid #30363d;padding:.75rem 1rem">
+                <h6 class="modal-title mb-0"><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>Confirm</h6>
+                <button type="button" class="btn-close btn-close-white btn-sm" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="dmConfirmMsg" style="font-size:.875rem;padding:.75rem 1rem"></div>
+            <div class="modal-footer" style="border-top:1px solid #30363d;padding:.5rem 1rem;gap:.5rem">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger btn-sm" id="dmConfirmOk">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var pendingForm = null;
+    var modal       = null;
+
+    function getModal() {
+        if (!modal) {
+            modal = new bootstrap.Modal(document.getElementById('dmConfirm'));
+            document.getElementById('dmConfirmOk').addEventListener('click', function () {
+                modal.hide();
+                if (pendingForm) pendingForm.submit();
+            });
+        }
+        return modal;
+    }
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-dm-confirm]');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        pendingForm = btn.closest('form');
+        document.getElementById('dmConfirmMsg').textContent = btn.dataset.dmConfirm;
+        var okBtn = document.getElementById('dmConfirmOk');
+        okBtn.textContent  = btn.dataset.dmOk    || 'Delete';
+        okBtn.className    = (btn.dataset.dmClass || 'btn btn-danger') + ' btn-sm';
+        getModal().show();
+    }, true);
+})();
+</script>
+</body>
+</html>

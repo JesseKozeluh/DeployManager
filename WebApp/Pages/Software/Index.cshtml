@@ -1,0 +1,61 @@
+@page
+@model DeployManager.Pages.Software.IndexModel
+@{ ViewData["Title"] = "Software Catalog"; ViewData["ActivePage"] = "Software"; }
+
+<div class="d-flex justify-content-end mb-3">
+    <a asp-page="Upsert" class="btn btn-primary"><i class="bi bi-plus me-1"></i>Add Software</a>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        @if (!Model.Items.Any())
+        {
+            <div class="p-4 text-center">
+                <i class="bi bi-app text-secondary" style="font-size:2rem"></i>
+                <p class="text-secondary mt-2 mb-1">No software in the catalog yet.</p>
+                <p class="text-secondary" style="font-size:.85rem">
+                    Add installers here, then bundle them into a Package to deploy during imaging.
+                </p>
+                <a asp-page="Upsert" class="btn btn-sm btn-primary mt-1">
+                    <i class="bi bi-plus me-1"></i>Add Software
+                </a>
+            </div>
+        }
+        else
+        {
+            <table class="table table-hover mb-0 align-middle">
+                <thead><tr><th>Name</th><th>Type</th><th>Installer Path</th><th>Install Command</th><th class="text-end">Actions</th></tr></thead>
+                <tbody>
+                @foreach (var sw in Model.Items)
+                {
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">@sw.Name</div>
+                            @if (!string.IsNullOrEmpty(sw.Description))
+                            {
+                                <div class="text-secondary" style="font-size:.8rem">@sw.Description</div>
+                            }
+                        </td>
+                        <td><span class="badge bg-secondary">@sw.InstallerType</span></td>
+                        <td><code style="font-size:.75rem">@sw.InstallerPath</code></td>
+                        <td><code style="font-size:.75rem">@sw.InstallCommand</code></td>
+                        <td class="text-end" style="white-space:nowrap">
+                            <div class="d-inline-flex gap-1 justify-content-end">
+                                <a asp-page="Upsert" asp-route-id="@sw.Id" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <form method="post" asp-page-handler="Delete" asp-route-id="@sw.Id" class="m-0">
+                                    <button type="button" class="btn btn-sm btn-outline-danger"
+                                            data-dm-confirm="Delete '@Html.Raw(sw.Name)'? This cannot be undone.">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
