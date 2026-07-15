@@ -26,6 +26,11 @@ $server          = $config.DeployServer
 $apiServer       = if ($config.ApiServer)       { $config.ApiServer }       else { $config.DeployServer }
 $apiToken        = if ($config.ApiToken)        { $config.ApiToken }        else { '' }
 $enableBranchCache = if ($null -ne $config.EnableBranchCache) { [bool]$config.EnableBranchCache } else { $false }
+# Per-installer timeout: kill a hung installer after this many minutes so one bad package
+# cannot stall the whole deployment. Falls back to 60 if the config value is missing.
+$softwareTimeoutMin = if ($config.SoftwareInstallTimeoutMinutes -and [int]$config.SoftwareInstallTimeoutMinutes -gt 0) {
+    [int]$config.SoftwareInstallTimeoutMinutes
+} else { 60 }
 
 Write-Host "Site         : $($config.Site)"
 Write-Host "Domain       : $($config.Domain)"
@@ -83,18 +88,180 @@ function Mount-UncDrive([string]$uncPath) {
     foreach ($code in 90..68) {                       # Z .. D
         $letter = [char]$code
         if (-not (Test-Path "${letter}:")) {
-            & net use "${letter}:" "$uncPath" 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) { return "${letter}:" }
+            # Run net use as a bounded process. An unreachable/slow share can make a plain
+            # 'net use' hang for a long time, which would stall the whole deployment before
+            # the install step is even reached (its timeout would not cover it). Give up
+            # after 60s so the item fails cleanly and the deployment continues.
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName        = 'net.exe'
+            $psi.Arguments       = "use ${letter}: `"$uncPath`""
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow  = $true
+            $np = [System.Diagnostics.Process]::Start($psi)
+            if ($np.WaitForExit(60000)) {
+                if ($np.ExitCode -eq 0) { return "${letter}:" }
+            } else {
+                try { & taskkill.exe /PID $np.Id /T /F 2>&1 | Out-Null } catch {}
+                Write-Warning "  net use for '$uncPath' timed out after 60s - share unreachable?"
+                return $null
+            }
         }
     }
     return $null
 }
 
+# Best-effort check that BitLocker recovery information was backed up to AD DS - typically by
+# the customer's own Group Policy, which owns AD backup and refuses the manual cmdlet. Reads the
+# BitLocker Management operational log and returns $true only on a positive backup signal.
+function Test-AdBackupSucceeded {
+    try {
+        $since = (Get-Date).AddMinutes(-30)
+        $evts  = Get-WinEvent -FilterHashtable @{
+            LogName   = 'Microsoft-Windows-BitLocker/BitLocker Management'
+            StartTime = $since
+        } -ErrorAction Stop
+        foreach ($e in $evts) {
+            if ($e.Id -eq 845) { return $true }
+            if ($e.Message -and $e.Message -match 'Active Directory' -and $e.Message -match 'backed up' -and $e.Message -notmatch 'fail') { return $true }
+        }
+    } catch { }
+    return $false
+}
+
+# True only when the device is actually joined to Entra ID. Used to skip the Entra recovery-key
+# backup on domain-only machines, where it would otherwise throw a noisy 0x801C0450 error.
+function Test-EntraJoined {
+    try {
+        $out = & dsregcmd /status 2>$null
+        foreach ($line in $out) {
+            if ($line -match 'AzureAdJoined\s*:\s*YES') { return $true }
+        }
+    } catch { }
+    return $false
+}
+
+# Enable BitLocker on one volume. The OS drive uses a TPM protector; data drives use a
+# recovery-password protector plus auto-unlock (which needs the OS drive already protected).
+# Returns a status hashtable. The recovery password is NEVER written to the log - the enabling
+# cmdlets are silenced on the warning stream (which echoes the password) and it is only ever
+# written to the secured escrow share file.
+function Enable-DriveBitLocker([string]$Mount, [bool]$IsOs, $blCfg) {
+    $st = @{ mount = $Mount; state = 'unknown'; escrowed = $false; keyId = ''; error = '' }
+    try {
+        $vol = Get-BitLockerVolume -MountPoint $Mount -ErrorAction Stop
+        if ($vol.VolumeStatus -ne 'FullyDecrypted') { $st.state = 'already'; return $st }
+
+        $method   = if ($blCfg.EncryptionMethod -eq 'XtsAes128') { 'XtsAes128' } else { 'XtsAes256' }
+        $usedOnly = [bool]$blCfg.UsedSpaceOnly
+
+        # NOTE: the enabling cmdlets echo the plaintext recovery password on the WARNING stream,
+        # which Start-Transcript would capture. -WarningAction SilentlyContinue plus a 3>$null
+        # redirect keep the password out of the log.
+        if ($IsOs) {
+            Enable-BitLocker -MountPoint $Mount -EncryptionMethod $method -UsedSpaceOnly:$usedOnly -TpmProtector -SkipHardwareTest -WarningAction SilentlyContinue -ErrorAction Stop 3>$null | Out-Null
+        } else {
+            Enable-BitLocker -MountPoint $Mount -EncryptionMethod $method -UsedSpaceOnly:$usedOnly -RecoveryPasswordProtector -SkipHardwareTest -WarningAction SilentlyContinue -ErrorAction Stop 3>$null | Out-Null
+        }
+
+        # Ensure a recovery-password protector exists (add one on the OS drive).
+        $rp = (Get-BitLockerVolume -MountPoint $Mount).KeyProtector | Where-Object { $_.KeyProtectorType -eq 'RecoveryPassword' } | Select-Object -First 1
+        if (-not $rp) {
+            Add-BitLockerKeyProtector -MountPoint $Mount -RecoveryPasswordProtector -WarningAction SilentlyContinue -ErrorAction Stop 3>$null | Out-Null
+            $rp = (Get-BitLockerVolume -MountPoint $Mount).KeyProtector | Where-Object { $_.KeyProtectorType -eq 'RecoveryPassword' } | Select-Object -First 1
+        }
+        if ($rp) { $st.keyId = $rp.KeyProtectorId }
+
+        if (-not $IsOs) {
+            try { Enable-BitLockerAutoUnlock -MountPoint $Mount -ErrorAction Stop | Out-Null } catch {}
+        }
+
+        # Escrow the recovery key to each enabled target. Success on ANY target counts.
+        # The recovery password itself is only ever written to the (secured) share file -
+        # never to the deployment log.
+        if ($rp) {
+            $escErrs      = @()
+            $anyRequested = $false
+
+            if ($blCfg.BackupToAd) {
+                $anyRequested = $true
+                if ([bool]$blCfg.AdBackupViaGpo) {
+                    # Operator has declared that their BitLocker Group Policy owns AD DS backup; it
+                    # escrows the key at encryption time and refuses the manual cmdlet. Skip the
+                    # manual backup, trust the policy, and confirm best-effort via the event log.
+                    $st.escrowed = $true
+                    if (Test-AdBackupSucceeded) { $escErrs += 'AD: stored by Group Policy (confirmed in event log)' }
+                    else { $escErrs += 'AD: via Group Policy (verify recovery key present in AD)' }
+                } else {
+                    try { Backup-BitLockerKeyProtector -MountPoint $Mount -KeyProtectorId $rp.KeyProtectorId -ErrorAction Stop | Out-Null; $st.escrowed = $true }
+                    catch {
+                        $adMsg = $_.Exception.Message
+                        if ($adMsg -like '*Group policy does not permit*Active Directory*') {
+                            # Safety net: the customer's Group Policy owns AD backup even though the
+                            # operator did not tick "AD backup via Group Policy". It refuses the
+                            # manual cmdlet but stores the key at encryption time, so treat this as
+                            # escrowed rather than false-failing (the OS drive also has a TPM protector).
+                            $st.escrowed = $true
+                            if (Test-AdBackupSucceeded) { $escErrs += 'AD: stored by Group Policy (confirmed in event log)' }
+                            else { $escErrs += 'AD: managed by Group Policy (verify recovery key present in AD)' }
+                        } else {
+                            $escErrs += "AD: $adMsg"
+                        }
+                    }
+                }
+            }
+            if ($blCfg.BackupToEntra) {
+                $anyRequested = $true
+                if (Test-EntraJoined) {
+                    try { BackupToAAD-BitLockerKeyProtector -MountPoint $Mount -KeyProtectorId $rp.KeyProtectorId -ErrorAction Stop | Out-Null; $st.escrowed = $true }
+                    catch { $escErrs += "Entra: $($_.Exception.Message)" }
+                } else {
+                    # Domain-only (or not-yet-Entra-joined Autopilot) device - attempting the Entra
+                    # backup would throw 0x801C0450. Skip it cleanly; Intune policy should own
+                    # BitLocker on devices that become Entra-joined later at OOBE.
+                    $escErrs += 'Entra: skipped (device is not Entra joined)'
+                }
+            }
+            if ($blCfg.SaveToShare -and $blCfg.SharePath) {
+                $anyRequested = $true
+                try {
+                    $rpFull = (Get-BitLockerVolume -MountPoint $Mount).KeyProtector | Where-Object { $_.KeyProtectorType -eq 'RecoveryPassword' } | Select-Object -First 1
+                    $file   = Join-Path ([string]$blCfg.SharePath) ("{0}_{1}.txt" -f $env:COMPUTERNAME, $Mount.TrimEnd(':'))
+                    $lines  = @(
+                        "Computer        : $env:COMPUTERNAME"
+                        "Volume          : $Mount"
+                        "KeyProtectorId  : $($rpFull.KeyProtectorId)"
+                        "RecoveryPassword: $($rpFull.RecoveryPassword)"
+                        "Date            : $(Get-Date -Format 'o')"
+                    )
+                    Set-Content -Path $file -Value $lines -Encoding UTF8 -ErrorAction Stop
+                    $st.escrowed = $true
+                } catch { $escErrs += "Share: $($_.Exception.Message)" }
+            }
+
+            if ($escErrs.Count -gt 0) { $st.error = ($escErrs -join '; ') }
+
+            if ($anyRequested -and (-not $st.escrowed) -and [bool]$blCfg.RequireEscrow) {
+                # Escrow was required but no target succeeded. Leave the drive encrypted and
+                # functional (it has a TPM / auto-unlock protector) and flag the job for operator
+                # attention. We deliberately do NOT auto-decrypt: decryption exposes data, is slow,
+                # and proved unreliable - a surfaced failure the operator can remediate is safer.
+                $st.state = 'failed-escrow'
+                return $st
+            }
+        }
+        $st.state = 'protected'
+    } catch {
+        $st.state = 'failed'
+        $st.error = $_.Exception.Message
+    }
+    return $st
+}
+
 # ---------------------------------------------------------------
 # Software installation
 # ---------------------------------------------------------------
-$items = $config.SoftwareItems
-if (-not $items -or $items.Count -eq 0) {
+$items = @($config.SoftwareItems | Where-Object { $_ -and $_.InstallerPath })
+if ($items.Count -eq 0) {
     Write-Host "No software items in config - nothing to install."
 } else {
     $total = $items.Count
@@ -202,18 +369,48 @@ if (-not $items -or $items.Count -eq 0) {
                 $exe = Join-Path $runDir $exe
             }
 
-            $proc = Start-Process -FilePath $exe -ArgumentList $args `
-                                  -WorkingDirectory $runDir `
-                                  -Wait -PassThru -NoNewWindow
-            Write-Host "  Exit code: $($proc.ExitCode)"
-            $result.exitCode = $proc.ExitCode
+            # Launch via a directly-constructed .NET process. Start-Process -PassThru does
+            # NOT reliably populate ExitCode after WaitForExit (it comes back blank), which
+            # mislabels successful installs and sends a null exit code that breaks the result
+            # callback. A direct Process gives a reliable exit code plus the timeout/kill.
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName         = $exe
+            $psi.Arguments        = $args
+            $psi.WorkingDirectory = $runDir
+            $psi.UseShellExecute  = $false      # inherit the console so output lands in PostInstall.log
+            $proc = [System.Diagnostics.Process]::Start($psi)
 
-            if ($proc.ExitCode -in 0, 3010) {
-                $result.success = $true
+            # Poll for exit up to the configured timeout, sending a heartbeat every 60s so a
+            # long-but-legitimate installer isn't flagged as an inactive/hung job by the
+            # server watchdog. Never blocks forever - a still-running installer is killed at
+            # the deadline.
+            $deadline = (Get-Date).AddMinutes($softwareTimeoutMin)
+            $lastBeat = Get-Date
+            while (-not $proc.HasExited -and (Get-Date) -lt $deadline) {
+                Start-Sleep -Seconds 5
+                if (((Get-Date) - $lastBeat).TotalSeconds -ge 60) {
+                    Send-Api "/api/jobs/$macKey/heartbeat" '{}'
+                    $lastBeat = Get-Date
+                }
+            }
+
+            if (-not $proc.HasExited) {
+                Write-Warning "  $($sw.Name) exceeded the $softwareTimeoutMin-minute install timeout - terminating."
+                # Kill the installer and any child processes it spawned, then move on.
+                try { & taskkill.exe /PID $proc.Id /T /F 2>&1 | Out-Null } catch {}
+                $result.exitCode = -1
+                $result.error    = "$($sw.Name) timed out after $softwareTimeoutMin minute(s) and was terminated."
             } else {
-                $msg = "$($sw.Name) returned exit code $($proc.ExitCode) - may have failed."
-                Write-Warning "  $msg"
-                $result.error = $msg
+                $code = $proc.ExitCode
+                Write-Host "  Exit code: $code"
+                $result.exitCode = $code
+                if ($code -in 0, 3010) {
+                    $result.success = $true
+                } else {
+                    $msg = "$($sw.Name) returned exit code $code - may have failed."
+                    Write-Warning "  $msg"
+                    $result.error = $msg
+                }
             }
         } catch {
             $msg = "FAILED to run $($sw.Name): $_"
@@ -294,6 +491,99 @@ if ($enableBranchCache) {
         Write-Host "  BranchCache enabled in Distributed Cache mode."
     } catch {
         Write-Warning "Could not enable BranchCache: $_"
+    }
+}
+
+# ---------------------------------------------------------------
+# BitLocker drive encryption (runs after software/drivers)
+# ---------------------------------------------------------------
+$blCfg = $config.BitLocker
+if ($blCfg -and $blCfg.Enable) {
+    Write-Host ""
+    Write-Host "--- BitLocker encryption ---"
+
+    $tpmOk = $false
+    try { $tpm = Get-Tpm -ErrorAction Stop; $tpmOk = ($tpm.TpmPresent -and $tpm.TpmReady) } catch {}
+
+    if (-not $tpmOk) {
+        Write-Warning "  TPM not present or not ready - skipping BitLocker."
+        if ($macKey -and $apiServer) {
+            Send-Api "/api/jobs/$macKey/bitlocker" (@{ status = 'skipped'; detail = 'TPM not present or not ready' } | ConvertTo-Json -Compress)
+        }
+    } else {
+        $osLetter = ($env:SystemDrive).TrimEnd(':')
+        $mode     = if ($blCfg.Volumes) { [string]$blCfg.Volumes } else { 'os' }
+        $allVols  = @(Get-Volume | Where-Object { $_.DriveLetter })
+
+        # OS drive is always first; auto-unlock on data drives needs it protected first.
+        $targets = @(@{ Mount = "${osLetter}:"; IsOs = $true })
+
+        if ($mode -eq 'osdata') {
+            foreach ($v in $allVols) {
+                if ($v.DriveType -eq 'Fixed' -and $v.DriveLetter -ne $osLetter) {
+                    $targets += @{ Mount = "$($v.DriveLetter):"; IsOs = $false }
+                }
+            }
+        } elseif ($mode -eq 'specific') {
+            $tokens = @(([string]$blCfg.SpecificVolumes) -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+            foreach ($tok in $tokens) {
+                $letter = $tok.TrimEnd(':')
+                $match  = $allVols | Where-Object {
+                    $_.DriveType -eq 'Fixed' -and $_.DriveLetter -ne $osLetter -and
+                    ($_.FileSystemLabel -eq $tok -or [string]$_.DriveLetter -eq $letter)
+                } | Select-Object -First 1
+                if ($match) { $targets += @{ Mount = "$($match.DriveLetter):"; IsOs = $false } }
+            }
+        }
+
+        $summary = @()
+        foreach ($t in $targets) {
+            Write-Host "  Encrypting $($t.Mount) ..."
+            $r    = Enable-DriveBitLocker $t.Mount $t.IsOs $blCfg
+            $line = "$($t.Mount) $($r.state)"
+            if ($r.escrowed) { $line += ' (escrowed)' }
+            if ($r.error)    { $line += " - $($r.error)" }
+            $summary += $line
+            Write-Host "    -> $line"
+        }
+
+        $overall = if ($summary -match 'failed') { 'failed' } elseif ($targets.Count -gt 0) { 'protected' } else { 'none' }
+        Write-Host "  BitLocker: $overall"
+        if ($macKey -and $apiServer) {
+            Send-Api "/api/jobs/$macKey/bitlocker" (@{ status = $overall; detail = ($summary -join '; ') } | ConvertTo-Json -Compress)
+        }
+    }
+}
+
+# -- Collect hardware hash for Autopilot ----------------------------------------
+# MDM_DevDetail_Ext01 is only available in a full Windows installation, not WinPE.
+if ($macKey -and $apiServer) {
+    try {
+        $mdmInfo = Get-WmiObject -Namespace 'root/cimv2/mdm/dmmap' `
+            -Class 'MDM_DevDetail_Ext01' -Filter "InstanceID='Ext' AND ParentID='./DevDetail'" `
+            -ErrorAction Stop
+        $hwHash = $mdmInfo.DeviceHardwareData
+        if ($hwHash) {
+            Write-Host "Hardware hash collected ($($hwHash.Length) chars)"
+            $prodId = ''
+            try {
+                $ntVer = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+                $prodId = (Get-ItemProperty -Path $ntVer -Name 'ProductId' -ErrorAction Stop).ProductId
+                Write-Host "Windows Product ID: $prodId"
+            } catch { Write-Warning "Could not read Product ID: $_" }
+            $serial = ''
+            try {
+                $serial = (Get-WmiObject Win32_BIOS -ErrorAction Stop).SerialNumber
+                Write-Host "Serial number: $serial"
+            } catch { Write-Warning "Could not read serial number: $_" }
+            $safeHash   = ($hwHash -replace '"','\"' -replace '\\','\\')
+            $safeProd   = ($prodId -replace '"','\"')
+            $safeSerial = ($serial -replace '"','\"')
+            Send-Api "/api/jobs/$macKey/hardware-hash" "{`"hash`":`"$safeHash`",`"productId`":`"$safeProd`",`"serialNumber`":`"$safeSerial`"}"
+            Write-Host "Hardware hash submitted to Deploy Manager."
+        }
+    } catch {
+        Write-Warning "Could not collect hardware hash: $_"
     }
 }
 

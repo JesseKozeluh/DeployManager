@@ -14,6 +14,14 @@ public class DeploymentJob
     // "workgroup" = join a workgroup instead (for Autopilot / Intune scenarios)
     public string JoinMode { get; set; } = "domain";
     public string Workgroup { get; set; } = "WORKGROUP";
+    public string GroupTag { get; set; } = "";
+    public string HardwareHash { get; set; } = "";
+    public string WindowsProductId { get; set; } = "";
+    public string IntuneStatus { get; set; } = "";
+    // BitLocker post-imaging result: "" (not attempted) | protected | failed | skipped | none
+    public string BitLockerStatus { get; set; } = "";
+    // Per-volume detail, e.g. "C: protected (escrowed); D: protected (escrowed)"
+    public string BitLockerDetail { get; set; } = "";
     // One-time token embedded in the HTTP job file; WinPE must echo it back as
     // X-Deploy-Token on every job API callback (imaging-started, complete, etc.).
     public string ApiToken { get; set; } = "";
@@ -23,6 +31,9 @@ public class DeploymentJob
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime? Started { get; set; }
     public DateTime? Completed { get; set; }
+    // Last time WinPE/PostInstall reported progress or a heartbeat while imaging.
+    // The watchdog times out on inactivity based on this, not total elapsed time.
+    public DateTime? LastActivity { get; set; }
     public List<string> Log { get; set; } = new();
     public string CurrentInstall { get; set; } = "";
     public int SoftwareTotal { get; set; }

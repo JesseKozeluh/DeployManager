@@ -104,6 +104,20 @@ public class DataStore
             ctx.Database.ExecuteSqlRaw("ALTER TABLE Jobs ADD COLUMN JoinMode TEXT NOT NULL DEFAULT 'domain'");
         if (!columns.Contains("Workgroup"))
             ctx.Database.ExecuteSqlRaw("ALTER TABLE Jobs ADD COLUMN Workgroup TEXT NOT NULL DEFAULT 'WORKGROUP'");
+        if (!columns.Contains("GroupTag"))
+            ctx.Database.ExecuteSqlRaw("ALTER TABLE Jobs ADD COLUMN GroupTag TEXT NOT NULL DEFAULT ''");
+        if (!columns.Contains("HardwareHash"))
+            ctx.Database.ExecuteSqlRaw("ALTER TABLE Jobs ADD COLUMN HardwareHash TEXT NOT NULL DEFAULT ''");
+        if (!columns.Contains("WindowsProductId"))
+            ctx.Database.ExecuteSqlRaw("ALTER TABLE Jobs ADD COLUMN WindowsProductId TEXT NOT NULL DEFAULT ''");
+        if (!columns.Contains("IntuneStatus"))
+            ctx.Database.ExecuteSqlRaw("ALTER TABLE Jobs ADD COLUMN IntuneStatus TEXT NOT NULL DEFAULT ''");
+        if (!columns.Contains("BitLockerStatus"))
+            ctx.Database.ExecuteSqlRaw("ALTER TABLE Jobs ADD COLUMN BitLockerStatus TEXT NOT NULL DEFAULT ''");
+        if (!columns.Contains("BitLockerDetail"))
+            ctx.Database.ExecuteSqlRaw("ALTER TABLE Jobs ADD COLUMN BitLockerDetail TEXT NOT NULL DEFAULT ''");
+        if (!columns.Contains("LastActivity"))
+            ctx.Database.ExecuteSqlRaw("ALTER TABLE Jobs ADD COLUMN LastActivity TEXT NULL");
     }
 
     private void MigrateFromJsonIfNeeded(DeployContext ctx)
@@ -352,25 +366,60 @@ public class DataStore
                        .ToList();
     }
 
-    // Finds all jobs stuck in "imaging" for longer than the threshold and marks them "timeout".
-    // Returns the list of newly timed-out jobs so the caller can send email notifications.
-    public List<DeploymentJob> TimeoutStaleJobs(TimeSpan threshold)
+    // Bumps the job's last-activity timestamp. Called by the lightweight /heartbeat
+    // callback during long client operations (WIM download, a long installer) so the
+    // watchdog can distinguish "still working" from "hung".
+    public void Heartbeat(string mac)
     {
         using var ctx = Ctx();
-        var cutoff = DateTime.UtcNow - threshold;
-        var stale  = ctx.Jobs
-                        .Where(j => j.Status == "imaging" && j.Started != null && j.Started < cutoff)
-                        .ToList();
+        var norm = NormMac(mac);
+        var job = ctx.Jobs.Where(j => j.MacAddress == norm)
+                          .OrderByDescending(j => j.Created)
+                          .FirstOrDefault();
+        if (job == null || job.Status != "imaging") return;
+        job.LastActivity = DateTime.UtcNow;
+        ctx.SaveChanges();   // deliberately no SignalR push - heartbeats are silent
+    }
+
+    // Marks jobs stuck in "imaging" as "timeout". A job times out when it has been
+    // INACTIVE (no callback or heartbeat) for longer than inactivityThreshold, or when
+    // it exceeds the absolute maxDuration ceiling regardless of activity. Activity-based
+    // so a legitimately long-but-progressing deployment is never falsely timed out.
+    // Returns the newly timed-out jobs so the caller can send email notifications.
+    public List<DeploymentJob> TimeoutStaleJobs(TimeSpan inactivityThreshold, TimeSpan maxDuration)
+    {
+        using var ctx = Ctx();
+        var now              = DateTime.UtcNow;
+        var inactivityCutoff = now - inactivityThreshold;
+        var maxCutoff        = now - maxDuration;
+
+        var stale = ctx.Jobs
+            .Where(j => j.Status == "imaging" && j.Started != null &&
+                        (((j.LastActivity ?? j.Started) < inactivityCutoff) || (j.Started < maxCutoff)))
+            .ToList();
         if (stale.Count == 0) return stale;
 
+        var mins = (int)inactivityThreshold.TotalMinutes;
         foreach (var job in stale)
         {
+            var hitMax = job.Started < maxCutoff;
             job.Status       = "timeout";
-            job.ErrorMessage = "No response from WinPE for more than 2 hours — job marked as timed out.";
+            job.ErrorMessage = hitMax
+                ? $"Imaging exceeded the {(int)maxDuration.TotalHours}h maximum — job marked as timed out."
+                : $"No activity from WinPE/PostInstall for over {mins} minutes — job marked as timed out.";
             job.Completed    = DateTime.UtcNow;
         }
         ctx.SaveChanges();
         return stale;
+    }
+
+    public List<DeploymentJob> GetJobsWithHardwareHash()
+    {
+        using var ctx = Ctx();
+        return ctx.Jobs
+                  .Where(j => j.HardwareHash != "")
+                  .OrderByDescending(j => j.Created)
+                  .ToList();
     }
 
     public DeploymentJob? GetJobByMac(string mac)
@@ -433,6 +482,7 @@ public class DataStore
             job.ApiToken,
             job.JoinMode,
             job.Workgroup,
+            job.GroupTag,
             DjoinBlob     = djoinBlob ?? "",
             SoftwareItems = softwareItems,
             DriverPackage = driverPackageInfo
@@ -462,6 +512,47 @@ public class DataStore
         }
     }
 
+    public void SetHardwareHash(string mac, string hash, string productId = "")
+    {
+        using var ctx = Ctx();
+        var norm = NormMac(mac);
+        var job = ctx.Jobs.Where(j => j.MacAddress == norm)
+                          .OrderByDescending(j => j.Created)
+                          .FirstOrDefault();
+        if (job == null) return;
+        job.HardwareHash = hash;
+        if (!string.IsNullOrEmpty(productId))
+            job.WindowsProductId = productId;
+        ctx.SaveChanges();
+    }
+
+    public void SetIntuneStatus(string mac, string status)
+    {
+        using var ctx = Ctx();
+        var norm = NormMac(mac);
+        var job = ctx.Jobs.Where(j => j.MacAddress == norm)
+                          .OrderByDescending(j => j.Created)
+                          .FirstOrDefault();
+        if (job == null) return;
+        job.IntuneStatus = status;
+        ctx.SaveChanges();
+        Push(norm, job.Status);
+    }
+
+    public void SetBitLockerStatus(string mac, string status, string detail)
+    {
+        using var ctx = Ctx();
+        var norm = NormMac(mac);
+        var job = ctx.Jobs.Where(j => j.MacAddress == norm)
+                          .OrderByDescending(j => j.Created)
+                          .FirstOrDefault();
+        if (job == null) return;
+        job.BitLockerStatus = status;
+        job.BitLockerDetail = detail;
+        ctx.SaveChanges();
+        Push(norm, job.Status);
+    }
+
     public void MarkJobImaging(string mac)
     {
         var h = HttpJobFile(mac);
@@ -473,8 +564,9 @@ public class DataStore
                           .OrderByDescending(j => j.Created)
                           .FirstOrDefault();
         if (job == null) return;
-        job.Status  = "imaging";
-        job.Started = DateTime.UtcNow;
+        job.Status       = "imaging";
+        job.Started      = DateTime.UtcNow;
+        job.LastActivity = DateTime.UtcNow;
         ctx.SaveChanges();
 
         Push(job.MacAddress, "imaging");
@@ -494,6 +586,7 @@ public class DataStore
             job.Started ??= DateTime.UtcNow;
         }
         job.CurrentInstall = name;
+        job.LastActivity   = DateTime.UtcNow;
         if (total > 0) job.SoftwareTotal = total;
         ctx.SaveChanges();
     }
@@ -508,6 +601,7 @@ public class DataStore
         if (job == null) return;
         job.SoftwareResults = job.SoftwareResults.Append(result).ToList();
         job.CurrentInstall  = "";
+        job.LastActivity    = DateTime.UtcNow;
         ctx.Entry(job).Property(j => j.SoftwareResults).IsModified = true;
         ctx.SaveChanges();
     }
@@ -738,7 +832,36 @@ public class DataStore
             targetOu = existingOu;
         }
 
-        var blob = OfflineDomainJoin.Provision(domain, deviceName, targetOu, pdcName, saUser, saDomain, saPass, out var error);
+        var blob = OfflineDomainJoin.Provision(
+            domain, deviceName, targetOu, pdcName, saUser, saDomain, saPass, out var error, out var rc);
+
+        // KB5020276 hardening: some DCs block re-use of an existing computer account
+        // (NERR_AccountReuseBlockedByPolicy = 2732) regardless of ownership or the
+        // "Allow computer account re-use during domain join" policy — which stalls
+        // re-imaging of any machine that already has an AD object. When the operator has
+        // opted in, delete the stale object and recreate it (a create has no re-use gate).
+        // Opt-in because deleting the object also removes its escrowed BitLocker recovery
+        // keys and group memberships.
+        if (blob == null
+            && rc == OfflineDomainJoin.NERR_AccountReuseBlockedByPolicy
+            && s.RecreateComputerAccountOnReuseFailure)
+        {
+            _log.LogWarning(
+                "Account re-use blocked (2732) for {Device} and RecreateComputerAccountOnReuseFailure is enabled — deleting and recreating the computer object.",
+                deviceName);
+            if (DeleteComputerObject(deviceName, domain, saUpn, saPass, out var delErr))
+            {
+                blob = OfflineDomainJoin.Provision(
+                    domain, deviceName, targetOu, pdcName, saUser, saDomain, saPass, out error, out rc);
+                if (blob != null)
+                    _log.LogInformation("Recreated computer object for {Device} after re-use block; provisioning succeeded.", deviceName);
+            }
+            else
+            {
+                _log.LogWarning("Could not delete existing object for {Device} to recreate it: {Err}", deviceName, delErr);
+            }
+        }
+
         if (blob == null)
         {
             _log.LogWarning("Offline domain-join provisioning failed for {Device}: {Error}", deviceName, error);
@@ -781,5 +904,49 @@ public class DataStore
             _log.LogWarning(ex, "AD OU lookup failed for {Device} — using the site OU.", deviceName);
         }
         return null;
+    }
+
+    // Deletes the existing computer object (and its child objects) so it can be recreated
+    // during a re-image. Bound with the service-account credentials — the same account that
+    // provisions the join, which already holds delete rights via delegation. Used only when
+    // RecreateComputerAccountOnReuseFailure is enabled and the DC blocked account re-use.
+    private bool DeleteComputerObject(string deviceName, string domain, string bindUser, string bindPass, out string error)
+    {
+        error = "";
+        if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(deviceName) || string.IsNullOrWhiteSpace(domain))
+        {
+            error = "invalid arguments or non-Windows host";
+            return false;
+        }
+        try
+        {
+#pragma warning disable CA1416
+            using var root = new System.DirectoryServices.DirectoryEntry(
+                $"LDAP://{domain}", bindUser, bindPass,
+                System.DirectoryServices.AuthenticationTypes.Secure);
+            using var ds = new System.DirectoryServices.DirectorySearcher(root)
+            {
+                Filter   = $"(&(objectCategory=computer)(cn={deviceName}))",
+                PageSize = 2
+            };
+            var r = ds.FindOne();
+            if (r == null)
+            {
+                error = "computer object not found";
+                return false;
+            }
+            using var entry = r.GetDirectoryEntry();
+            var dn = entry.Properties["distinguishedName"].Value?.ToString();
+            entry.DeleteTree();   // removes the object and its child records (incl. BitLocker recovery info)
+            _log.LogInformation("Deleted existing computer object {Dn} to recreate it for re-image.", dn);
+#pragma warning restore CA1416
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            _log.LogWarning(ex, "Failed to delete existing computer object for {Device}.", deviceName);
+            return false;
+        }
     }
 }

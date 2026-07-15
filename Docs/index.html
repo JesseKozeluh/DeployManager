@@ -132,7 +132,9 @@ tr:nth-child(even) td { background: rgba(255,255,255,.015); }
     display: flex; align-items: center; justify-content: center; margin-top: 2px;
 }
 .step .body { flex: 1; }
-.step .body > strong { display: block; margin-bottom: 2px; }
+.step .body .st {
+    display: block; font-weight: 700; color: var(--bright); margin-bottom: 2px;
+}
 
 .flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 18px 0; }
 .flow .box {
@@ -176,12 +178,18 @@ footer { margin-top: 70px; padding-top: 20px; border-top: 1px solid var(--border
     <a class="nav-link" href="#software">14 · Software &amp; packages</a>
     <div class="nav-sec">Deploying</div>
     <a class="nav-link" href="#deploy">15 · Deploying a machine</a>
+    <a class="nav-link" href="#deploy-domain">16 · Domain join deployment</a>
+    <a class="nav-link" href="#deploy-autopilot">17 · Autopilot / Intune deployment</a>
+    <div class="nav-sec">Intune integration</div>
+    <a class="nav-link" href="#intune-setup">18 · Entra app permissions</a>
+    <a class="nav-link" href="#intune-auto-register">19 · Automatic Autopilot registration</a>
     <div class="nav-sec">Administration</div>
-    <a class="nav-link" href="#certificate">16 · HTTPS certificate</a>
-    <a class="nav-link" href="#users">17 · Users &amp; authentication</a>
-    <a class="nav-link" href="#operations">18 · Operations &amp; backup</a>
-    <a class="nav-link" href="#troubleshooting">19 · Troubleshooting</a>
-    <a class="nav-link" href="#reference">20 · Reference</a>
+    <a class="nav-link" href="#certificate">20 · HTTPS certificate</a>
+    <a class="nav-link" href="#users">21 · Users &amp; authentication</a>
+    <a class="nav-link" href="#operations">22 · Operations &amp; backup</a>
+    <a class="nav-link" href="#troubleshooting">23 · Troubleshooting</a>
+    <a class="nav-link" href="#reference">24 · Reference</a>
+    <a class="nav-link" href="#changelog">25 · Recent changes</a>
 </nav>
 
 <main class="content">
@@ -199,6 +207,7 @@ its network subnet, installs software packages, and reports progress live to a w
     <li><strong>Site-aware</strong> — IP subnet determines the AD OU, timezone, and locale for each machine.</li>
     <li><strong>Software deployment</strong> — post-install packages run automatically after Windows setup.</li>
     <li><strong>Live monitoring</strong> — job status streams to the dashboard in real time.</li>
+    <li><strong>Autopilot / Intune</strong> — deploy machines in workgroup mode for Autopilot enrollment, with optional automatic device registration via the Microsoft Graph API.</li>
     <li><strong>Self-contained</strong> — a single MSI installs everything: web app, TFTP server, tray monitor. No external database, no IIS, no .NET prerequisite.</li>
 </ul>
 
@@ -224,7 +233,8 @@ directly.</p>
 <strong>Machines</strong>), then polls <code>http://server:8080/jobs/&lt;mac&gt;.json</code> for a
 deployment job. When a job exists it downloads and applies the WIM, injects drivers, pre-stages the
 computer account in AD, and reboots into Windows. A post-install phase installs the software package
-and reports success or failure back to the API.</p>
+and reports success or failure back to the API; for Autopilot deployments it also collects the
+hardware hash, serial number and Windows Product ID for Intune registration.</p>
 
 <h3>Components installed on the server</h3>
 <table>
@@ -244,7 +254,7 @@ and reports success or failure back to the API.</p>
     <li>Access to configure your <strong>DHCP server</strong> (options 66 and 67 on the target scope)</li>
     <li>Disk space for your images — a typical Windows 11 WIM is 4–6 GB; allow 20 GB+ on the drive holding <code>C:\ProgramData\DeployManager\images</code></li>
     <li><strong>Windows ADK + WinPE add-on</strong> on the server (needed to build and patch the boot image — <a href="#adk">section 7</a>). The signed iPXE Secure Boot chain and wimboot are already bundled in the installer, so no separate iPXE download is required.</li>
-    <li>An AD <strong>service account</strong> with <em>Full Control</em> over Computer objects in your target OUs (for domain join and re-imaging — see <a href="#svc-account">section 5</a>)</li>
+    <li>An AD <strong>service account</strong> with <em>Full Control</em> over Computer objects in your target OUs (for domain join and re-imaging — see <a href="#svc-account">section 6</a>)</li>
     <li>No .NET installation is required — the runtime ships inside the application.</li>
 </ul>
 <h3>Network ports (opened automatically by the installer)</h3>
@@ -258,24 +268,24 @@ and reports success or failure back to the API.</p>
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2 id="install"><span class="n">4</span>Installation</h2>
 <div class="step"><div class="num">1</div><div class="body">
-    <strong>Run the installer</strong>
+    <span class="st">Run the installer</span>
     Double-click <code>DeployManager-&lt;version&gt;-Setup.msi</code> and follow the wizard. The default
     location (<code>C:\Program Files\DeployManager</code>) is recommended.
 </div></div>
 <div class="step"><div class="num">2</div><div class="body">
-    <strong>Finish</strong>
+    <span class="st">Finish</span>
     On the final page, leave <em>Launch the Deploy Manager tray monitor</em> ticked. The installer
     starts both Windows services automatically.
 </div></div>
 <div class="step"><div class="num">3</div><div class="body">
-    <strong>Verify</strong>
+    <span class="st">Verify</span>
     <pre>sc.exe query DeployManager
 sc.exe query Tftpd64</pre>
     Both should report <code>RUNNING</code>. The tray icon should be visible near the clock.
 </div></div>
 <div class="ok">Browse to <code>https://&lt;server-ip&gt;:8090</code>. Your browser will warn about the
 certificate — that is expected on a fresh install (a self-signed certificate is generated automatically;
-you can replace it with one from your CA later, see <a href="#certificate">section 16</a>). You should
+you can replace it with one from your CA later, see <a href="#certificate">section 20</a>). You should
 land on the <strong>First-run Setup</strong> page.</div>
 
 <h3>Silent / scripted installation</h3>
@@ -323,9 +333,133 @@ object is created and which regional settings are applied.</p>
 <table>
 <tr><th>Permission</th><th>Applies to</th><th>Purpose</th></tr>
 <tr><td>Create/Delete Computer Objects</td><td>This object and all descendants</td><td>Create new machine accounts and clean up old ones</td></tr>
-<tr><td>Full Control</td><td>Descendant Computer objects</td><td>Read/write all properties, reset passwords, take ownership (required by KB5020276 account-reuse hardening for re-imaging)</td></tr>
+<tr><td>Full Control</td><td>Descendant Computer objects</td><td>Read/write all properties, reset passwords, take ownership, and delete (needed to recreate an object when a re-image hits the <a href="#account-reuse">KB5020276</a> re-use block)</td></tr>
 </table>
-<p>Additionally, the account needs <strong>local administrator</strong> rights on target machines for the PXE Reboot and Pre-stage Reboot actions (SMB to <code>admin$</code> + WMI process creation).</p>
+<p>Additionally, the account needs <strong>local administrator</strong> rights on target machines for the
+remote-reboot actions — see the next subsection.</p>
+
+<h3 id="remote-reboot-admin">Local admin for remote reboot (PXE Reboot / Pre-stage Reboot)</h3>
+<p>The <strong>Save Job + PXE Reboot</strong> and <strong>Save Job + Pre-stage Reboot</strong> actions
+restart a running, domain-joined machine into the deployment without anyone touching it. To do that,
+Deploy Manager (as the service account) authenticates to the target's <code>admin$</code> administrative
+share to drop a small launcher, then uses <strong>WMI</strong> to run it. Administrative shares are only
+reachable by <strong>local administrators</strong>, so the service account must be a local admin on the
+target — otherwise the action fails with:</p>
+<pre>Could not authenticate to \\&lt;ip&gt;\admin$ as &lt;service-account&gt;
+System error 5 has occurred. Access is denied.</pre>
+<p>(Imaging itself doesn't need this — domain join and offline provisioning run on the server, which is
+why a machine can image fine yet fail PXE Reboot.)</p>
+<div class="warn">The account you grant local admin <strong>must be the exact same account configured in
+Settings → Active Directory → Service account</strong>. If the error shows one name (e.g. a UPN like
+<code>svc-deploy@corp.example.com</code>) but you granted a differently-named account local admin, the
+authorised account isn't the one Deploy Manager uses — <code>System error 5</code> with a <em>correct
+password</em> means the account authenticated but isn't a local admin. Confirm both refer to the same AD
+account (same SID), not just similar names.</div>
+<p>Grant it fleet-wide with <strong>Group Policy Preferences</strong> (the additive method — it adds the
+account without removing existing local admins):</p>
+<div class="step"><div class="num">1</div><div class="body">
+    <span class="st">Create/edit a GPO</span>
+    In <strong>Group Policy Management</strong>, link a GPO to the OU holding your target computers.
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    <span class="st">Add a Local Group preference</span>
+    <strong>Computer Configuration → Preferences → Control Panel Settings → Local Users and Groups →
+    New → Local Group</strong>.
+</div></div>
+<div class="step"><div class="num">3</div><div class="body">
+    <span class="st">Configure it</span>
+    <strong>Action:</strong> <em>Update</em>. <strong>Group name:</strong> <em>Administrators (built-in)</em>
+    (this maps to the well-known SID <code>S-1-5-32-544</code>, so it's language-independent).
+    <strong>Leave "Delete all member users / groups" unticked</strong> — ticking them wipes existing local
+    admins. Under <strong>Members → Add</strong>, add the service account as <code>DOMAIN\ServiceAccount</code>
+    with action <em>Add to this group</em>.
+</div></div>
+<div class="step"><div class="num">4</div><div class="body">
+    <span class="st">Apply and verify</span>
+    <code>gpupdate /force</code> on a target (or wait for refresh), then confirm with
+    <code>net localgroup Administrators</code> — the service account should be listed. Retry PXE Reboot.
+</div></div>
+<div class="note">The target must have <em>applied</em> this policy before you use remote reboot on it. These
+actions operate on a machine that's already running Windows and domain-joined (they reboot it <em>into</em>
+the deployment), so the policy lands on its normal refresh. Brand-new bare-metal machines are PXE-booted
+manually instead (BIOS boot menu), so they don't need this.</div>
+<div class="warn">Local admin on every target is a <strong>privileged, fleet-wide grant</strong> — if the
+account is compromised it is admin on all those machines. It's inherent to the <code>admin$</code>/WMI
+mechanism (there's no lower-privilege way to write to an admin share). Scope the GPO to only the OUs where
+you use remote reboot, keep the account's password strong (encrypted at rest in Deploy Manager) and its
+privileges minimal elsewhere. If you'd rather not grant standing admin, PXE-boot targets manually instead
+of using the remote-reboot buttons.</div>
+
+<h3 id="winrm-lookup">WinRM for machine lookup (optional)</h3>
+<p>The <strong>Look up</strong> button on the Add Machine page queries a running target over
+<strong>WinRM</strong> (port 5985) to auto-fill its MAC address. If WinRM isn't enabled on the target you'll
+see <em>"WinRM cannot complete the operation… WinRM may not be enabled/reachable on the target (5985)"</em>
+— just enter the MAC manually, or enable WinRM fleet-wide by GPO. This is a convenience only; <strong>PXE
+Reboot / Pre-stage Reboot do not use WinRM</strong> (they use <code>admin$</code>/WMI).</p>
+<p>Enable WinRM by GPO — three pieces, all configurable centrally:</p>
+<div class="step"><div class="num">1</div><div class="body">
+    <span class="st">Enable the listener</span>
+    <strong>Computer Config → Policies → Administrative Templates → Windows Components → Windows Remote
+    Management (WinRM) → WinRM Service →</strong> <em>"Allow remote server management through WinRM"</em> =
+    Enabled, IPv4/IPv6 filter <code>*</code>.
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    <span class="st">Start the service</span>
+    <strong>Computer Config → Policies → Windows Settings → Security Settings → System Services →</strong>
+    <em>Windows Remote Management (WS-Management)</em> = <strong>Automatic</strong>.
+</div></div>
+<div class="step"><div class="num">3</div><div class="body">
+    <span class="st">Open the firewall</span>
+    <strong>Computer Config → Policies → Windows Settings → Security Settings → Windows Defender Firewall
+    with Advanced Security → Inbound Rules → New Rule → Predefined → Windows Remote Management →</strong>
+    allow <em>Windows Remote Management (HTTP-In)</em> (5985).
+</div></div>
+<p>Then <code>gpupdate /force</code> and reboot a target; test from the server with
+<code>Test-WSMan &lt;target&gt;</code>.</p>
+
+<h3 id="account-reuse">Re-imaging existing machines — computer account re-use (KB5020276)</h3>
+<p>When you re-image a machine whose computer object <strong>already exists</strong> in AD, Deploy Manager
+re-uses that object (it resets the account's password rather than deleting and recreating it). Since the
+Microsoft hardening update <strong>KB5020276</strong>, some domain controllers <strong>block</strong> this
+re-use. When that happens, imaging succeeds but the machine can't domain-join, and the server log records:</p>
+<pre>Offline domain-join provisioning failed for &lt;host&gt;:
+NetProvisionComputerAccount returned 2732 (0x00000AAC)</pre>
+<p>Error <code>2732</code> is <code>NERR_AccountReuseBlockedByPolicy</code>. Deploy Manager provisions the
+account <strong>offline</strong> (<code>NetProvisionComputerAccount</code>, impersonating the service
+account) rather than doing an online domain join, and this offline re-use is hardened
+<strong>inconsistently across domain controllers</strong> — depending on the DC's patch level neither the
+<em>"Domain controller: Allow computer account re-use during domain join"</em> allow-list GPO, Full Control,
+nor object ownership reliably lifts the block. Rather than have you chase a DC-side policy that may or may
+not apply, Deploy Manager handles it directly.</p>
+
+<h4 style="margin:18px 0 6px">Recommended fix — enable automatic recreate</h4>
+<p>In <strong>Settings → Active Directory</strong>, enable
+<strong>"Recreate computer object when re-use is blocked"</strong>. When a re-image hits error
+<code>2732</code>, Deploy Manager deletes the stale computer object (using the service account's existing
+delete rights) and recreates it — a fresh create has no re-use gate, so the join proceeds. This works
+regardless of DC patch level or policy, which is why it is the recommended approach for a mixed fleet.</p>
+<div class="warn">Deleting a computer object also removes its escrowed <strong>BitLocker recovery keys</strong>
+and <strong>security-group memberships</strong>. The recreate only triggers when a re-use is actually
+blocked (error 2732), and the object is recreated immediately in the same OU — but if you rely on
+BitLocker key escrow or group-based targeting, weigh this before enabling it, and re-escrow keys / re-add
+group membership after imaging. If your DCs do <em>not</em> block re-use, leave it off and the object is
+preserved as normal.</div>
+
+<h4 style="margin:18px 0 6px">Alternatives (manual)</h4>
+<p>If you would rather not enable the setting, you can clear a blocked machine by hand:</p>
+<ul>
+    <li><strong>Delete the stale object</strong> and re-image — Deploy Manager then creates a fresh object it
+        owns. The service account already has delete rights from the delegation above.</li>
+    <li><strong>Add the service account to the allow-list GPO</strong> — <em>Computer Config → Policies →
+        Windows Settings → Security Settings → Local Policies → Security Options → "Domain controller: Allow
+        computer account re-use during domain join"</em>, linked to the <strong>Domain Controllers</strong>
+        OU. This is Microsoft's sanctioned mechanism, but note it governs the <em>online</em> join path and
+        does not lift the block on Deploy Manager's offline provisioning on every DC build — test it in your
+        environment before relying on it.</li>
+</ul>
+<div class="note">Machines Deploy Manager itself creates are provisioned by the service account, so on DCs
+that honour the creator/owner check they re-image without any of this. The automatic-recreate setting is
+the portable option for environments where offline re-use is blocked outright.</div>
 
 <h3>WinPE local account (Settings)</h3>
 <p>Set the local administrator account name and password that WinPE bakes into deployed machines via
@@ -333,17 +467,37 @@ object is created and which regional settings are applied.</p>
 embedded into <code>boot.wim</code> when you patch it (<a href="#patch-bootwim">section 11</a>), so
 re-patch whenever you change it.</p>
 
+<h3>Email notifications (Settings)</h3>
+<p>Configure the SMTP host, port, credentials, from-address and a notify address to receive an email
+when a deployment completes or fails. Notifications can be toggled per event (on complete / on error),
+and the <strong>Send test email</strong> button verifies the configuration before you rely on it. The
+SMTP password is encrypted at rest.</p>
+
+<h3>Software delivery — BranchCache (Settings)</h3>
+<p>For multi-site WANs, enabling <strong>BranchCache</strong> changes how newly imaged machines download
+software packages: they use BITS and activate Windows BranchCache <em>Distributed Cache</em> mode, so
+machines at the same site serve cached packages to each other instead of re-downloading over the WAN.
+No hosted-cache server or WSUS infrastructure is required.</p>
+<div class="note">At least one BranchCache-enabled machine must already be online at a site before the
+next machine images there — the first machine at each site always downloads from the server.</div>
+
+<h3>Intune Autopilot (Settings)</h3>
+<p>Enables automatic Autopilot device registration via the Microsoft Graph API after each workgroup
+deployment. Requires an Entra app registration with an additional Graph permission — covered in full in
+<a href="#intune-setup">sections 18</a>–<a href="#intune-auto-register">19</a>.</p>
+
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2 id="adk"><span class="n">7</span>Install the Windows ADK</h2>
 <p>The ADK provides the tooling to build and service WinPE images. Two installers are required, in this
 order, <strong>on the Deploy Manager server</strong>:</p>
 <div class="step"><div class="num">1</div><div class="body">
-    <strong>Windows ADK</strong> — during setup, only the <em>Deployment Tools</em> feature is required.
+    <span class="st">Windows ADK</span>
+    During setup, only the <em>Deployment Tools</em> feature is required.
     <br><a href="https://learn.microsoft.com/en-us/windows-hardware/get-started/adk-install">learn.microsoft.com/en-us/windows-hardware/get-started/adk-install</a>
 </div></div>
 <div class="step"><div class="num">2</div><div class="body">
-    <strong>Windows PE add-on for the ADK</strong> — same download page, separate installer. Provides the
-    base WinPE image and <code>copype</code>.
+    <span class="st">Windows PE add-on for the ADK</span>
+    Same download page, separate installer. Provides the base WinPE image and <code>copype</code>.
 </div></div>
 <div class="warn">Always service WinPE images with <strong>ADK DISM</strong>
 (<span class="kbd-path">C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\amd64\DISM\dism.exe</span>),
@@ -356,17 +510,17 @@ DISM first on the PATH.</div>
 <h2 id="build-winpe"><span class="n">8</span>Build the WinPE boot image</h2>
 <p>Run everything below in an elevated <strong>Deployment and Imaging Tools Environment</strong> prompt.</p>
 <div class="step"><div class="num">1</div><div class="body">
-    <strong>Create a working copy of WinPE</strong>
+    <span class="st">Create a working copy of WinPE</span>
     <pre>copype amd64 C:\WinPE</pre>
 </div></div>
 <div class="step"><div class="num">2</div><div class="body">
-    <strong>Mount the boot image</strong>
+    <span class="st">Mount the boot image</span>
     <pre>dism /Mount-Image /ImageFile:C:\WinPE\media\sources\boot.wim /Index:1 /MountDir:C:\WinPE_MOUNT</pre>
     (Create <code>C:\WinPE_MOUNT</code> first if it does not exist.)
 </div></div>
 <div class="step"><div class="num">3</div><div class="body">
-    <strong>Add PowerShell support</strong> — the task sequence is PowerShell, so these optional
-    components are required (order matters):
+    <span class="st">Add PowerShell support</span>
+    The task sequence is PowerShell, so these optional components are required (order matters):
     <pre>set PKG=C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\amd64\WinPE_OCs
 dism /Image:C:\WinPE_MOUNT /Add-Package /PackagePath:"%PKG%\WinPE-WMI.cab"
 dism /Image:C:\WinPE_MOUNT /Add-Package /PackagePath:"%PKG%\WinPE-NetFX.cab"
@@ -376,28 +530,28 @@ dism /Image:C:\WinPE_MOUNT /Add-Package /PackagePath:"%PKG%\WinPE-StorageWMI.cab
 dism /Image:C:\WinPE_MOUNT /Add-Package /PackagePath:"%PKG%\WinPE-DismCmdlets.cab"</pre>
 </div></div>
 <div class="step"><div class="num">4</div><div class="body">
-    <strong>Add network drivers for your hardware</strong> — WinPE must get a DHCP lease on every model
-    you deploy. Download the vendor's WinPE driver pack (Dell WinPE CAB, HP WinPE pack, Lenovo SCCM
-    pack), extract it, then:
+    <span class="st">Add network drivers for your hardware</span>
+    WinPE must get a DHCP lease on every model you deploy. Download the vendor's WinPE driver pack
+    (Dell WinPE CAB, HP WinPE pack, Lenovo SCCM pack), extract it, then:
     <pre>dism /Image:C:\WinPE_MOUNT /Add-Driver /Driver:C:\WinPE_Drivers /Recurse</pre>
     <div class="note">Do not use <code>/ForceUnsigned</code>. If a driver will not load without it, get
     the properly signed WinPE driver from the vendor instead — unsigned drivers fail on Secure Boot
     hardware anyway.</div>
 </div></div>
 <div class="step"><div class="num">5</div><div class="body">
-    <strong>Copy in the Deploy Manager task sequence</strong>
+    <span class="st">Copy in the Deploy Manager task sequence</span>
     <pre>mkdir C:\WinPE_MOUNT\Deploy
 copy "C:\Program Files\DeployManager\scripts\Start-OSDeploy.ps1"    C:\WinPE_MOUNT\Deploy\
 copy "C:\Program Files\DeployManager\scripts\Start-PostInstall.ps1" C:\WinPE_MOUNT\Deploy\</pre>
 </div></div>
 <div class="step"><div class="num">6</div><div class="body">
-    <strong>Make WinPE launch the task sequence at boot</strong> — replace
-    <code>C:\WinPE_MOUNT\Windows\System32\startnet.cmd</code> with:
+    <span class="st">Make WinPE launch the task sequence at boot</span>
+    Replace <code>C:\WinPE_MOUNT\Windows\System32\startnet.cmd</code> with:
     <pre>wpeinit
 powershell -ExecutionPolicy Bypass -NoProfile -File X:\Deploy\Start-OSDeploy.ps1</pre>
 </div></div>
 <div class="step"><div class="num">7</div><div class="body">
-    <strong>Commit and copy to the TFTP root</strong>
+    <span class="st">Commit and copy to the TFTP root</span>
     <pre>dism /Unmount-Image /MountDir:C:\WinPE_MOUNT /Commit
 
 mkdir "%ProgramData%\DeployManager\tftp\Boot"
@@ -449,7 +603,7 @@ maintain.</p>
 enrollment, no disabling Secure Boot.</strong> Since iPXE v2.0.0 the project ships a
 <strong>Microsoft-signed shim</strong> (<code>ipxe-shim.efi</code>, signed by the "Microsoft Windows
 UEFI Driver Publisher" CA that firmware already trusts). The shim loads <code>ipxe.efi</code>, which is
-signed by the iPXE Secure Boot CA embedded in that shim. The trust chain is:</p>
+signed by the iPXE Secure Boot CA embedded in that shim. The trust chain is:
 <div class="flow" style="margin-top:10px">
     <div class="box">Firmware<small>trusts Microsoft UEFI CA</small></div><div class="arr">→</div>
     <div class="box">ipxe-shim.efi<small>Microsoft-signed</small></div><div class="arr">→</div>
@@ -459,7 +613,7 @@ signed by the iPXE Secure Boot CA embedded in that shim. The trust chain is:</p>
 <p style="margin-top:10px">Point DHCP option 67 at <code>ipxe-shim.efi</code> for UEFI clients and you
 are done. The one trade-off: you must use the iPXE binaries exactly as shipped — you cannot compile a
 custom iPXE with extra features and keep it Secure Boot-trusted, because the shim only trusts binaries
-the iPXE project itself signs. The stock <code>ipxe.efi</code> covers everything Deploy Manager needs.</div>
+the iPXE project itself signs. The stock <code>ipxe.efi</code> covers everything Deploy Manager needs.</p></div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2 id="dhcp"><span class="n">10</span>DHCP configuration</h2>
@@ -467,8 +621,9 @@ the iPXE project itself signs. The stock <code>ipxe.efi</code> covers everything
 in the TFTP root that automatically chains iPXE to the Deploy Manager HTTP boot script, so no
 DHCP user-class policies or vendor-class rules are needed.</p>
 <div class="step"><div class="num">1</div><div class="body">
-    <strong>Scope options</strong> — set these on the DHCP scope that covers the machines you want to PXE boot.
-    In an elevated PowerShell on the DHCP server:
+    <span class="st">Set the scope options</span>
+    On the DHCP scope that covers the machines you want to PXE boot, in an elevated PowerShell
+    on the DHCP server:
     <pre><span class="c"># Replace 192.168.10.0 with YOUR scope and &lt;server-ip&gt; with the Deploy Manager server IP</span>
 Set-DhcpServerv4OptionValue -ScopeId 192.168.10.0 -OptionId 66 -Value "&lt;server-ip&gt;"
 Set-DhcpServerv4OptionValue -ScopeId 192.168.10.0 -OptionId 67 -Value "ipxe-shim.efi"</pre>
@@ -483,14 +638,15 @@ Set-DhcpServerv4OptionValue -ScopeId 192.168.10.0 -OptionId 67 -Value "ipxe-shim
     on machines with Secure Boot enabled.</div>
 </div></div>
 <div class="step"><div class="num">2</div><div class="body">
-    <strong>Verify</strong> — confirm the options are set:
+    <span class="st">Verify</span>
+    Confirm the options are set:
     <pre>Get-DhcpServerv4OptionValue -ScopeId 192.168.10.0</pre>
     You should see option 66 = your server IP and option 67 = <code>ipxe-shim.efi</code>.
 </div></div>
 <div class="step"><div class="num">3</div><div class="body">
-    <strong>Mixed UEFI/BIOS fleets (optional)</strong> — use DHCP policies on option 60/93
-    (client architecture) to serve <code>ipxe-shim.efi</code> to UEFI and <code>undionly.kpxe</code> to BIOS
-    within the same scope.
+    <span class="st">Mixed UEFI/BIOS fleets (optional)</span>
+    Use DHCP policies on option 60/93 (client architecture) to serve <code>ipxe-shim.efi</code> to
+    UEFI and <code>undionly.kpxe</code> to BIOS within the same scope.
 </div></div>
 
 <h3 style="margin-top:20px">How the boot chain works</h3>
@@ -515,11 +671,13 @@ Within a minute the machine appears under <strong>Machines</strong> in the web U
 the WinPE local password. They must be patched before the image is usable — otherwise WinPE has no idea
 where its server is.</p>
 <div class="step"><div class="num">1</div><div class="body">
+    <span class="st">Check prerequisites</span>
     In the web UI open <strong>Settings → Boot Image</strong>. The status strip must show
     <em>boot.wim found</em>, <em>API URL configured</em>, <em>WinPE password configured</em> and
     <em>ADK DISM found</em>.
 </div></div>
 <div class="step"><div class="num">2</div><div class="body">
+    <span class="st">Run the patch</span>
     Click <strong>Patch boot.wim</strong>. The server mounts the image with ADK DISM (mount point
     <code>C:\WinPE_MOUNT</code>), replaces the placeholders, and commits. Output appears on the page.
 </div></div>
@@ -535,12 +693,14 @@ only need to re-patch (no manual file copy).</div>
 <h2 id="images"><span class="n">12</span>Windows install images</h2>
 <h3>Option A — straight from a Windows ISO</h3>
 <div class="step"><div class="num">1</div><div class="body">
+    <span class="st">List the editions in the ISO</span>
     Mount the Windows ISO (double-click), note its drive letter (e.g. <code>E:</code>), then list the
     editions inside:
     <pre>dism /Get-WimInfo /WimFile:E:\sources\install.wim</pre>
 </div></div>
 <div class="step"><div class="num">2</div><div class="body">
-    Export the edition you deploy (e.g. index 6 = Pro, index 3 = Enterprise — check the listing) into the
+    <span class="st">Export the edition you deploy</span>
+    Export the edition (e.g. index 6 = Pro, index 3 = Enterprise — check the listing) into the
     images directory:
     <pre>dism /Export-Image /SourceImageFile:E:\sources\install.wim /SourceIndex:6 `
      /DestinationImageFile:"%ProgramData%\DeployManager\images\Win11-24H2-Pro.wim" /Compress:max</pre>
@@ -562,13 +722,15 @@ creating jobs.</p>
 <p>Driver packages are injected into the applied Windows image during deployment, so each model gets its
 correct drivers without touching the golden image.</p>
 <div class="step"><div class="num">1</div><div class="body">
+    <span class="st">Get the driver pack</span>
     Download the vendor's <strong>enterprise driver pack</strong> for the model (Dell Family CAB,
     HP driver pack, Lenovo SCCM pack) and extract it into a subfolder of
     <span class="kbd-path">C:\ProgramData\DeployManager\drivers</span>, e.g.
     <code>drivers\Latitude-5450\</code>.
 </div></div>
 <div class="step"><div class="num">2</div><div class="body">
-    Web UI → <strong>Drivers → Add</strong>: name it and select the folder. When creating a deployment
+    <span class="st">Register it in the web UI</span>
+    Go to <strong>Drivers → Add</strong>: name it and select the folder. When creating a deployment
     job you choose which driver package applies.
 </div></div>
 
@@ -577,30 +739,75 @@ correct drivers without touching the golden image.</p>
 <p><strong>Software</strong> entries describe a single installer; <strong>Packages</strong> group them
 into an ordered set applied after Windows setup.</p>
 <div class="step"><div class="num">1</div><div class="body">
-    <strong>Software → Add Software</strong> — for each application provide the installer location
+    <span class="st">Add software items</span>
+    Under <strong>Software → Add Software</strong>, for each application provide the installer location
     (a UNC path or a path under the images share), the working directory, and the silent install command,
     e.g. <code>setup.exe /S</code> or <code>msiexec /i app.msi /qn</code>.
 </div></div>
 <div class="step"><div class="num">2</div><div class="body">
-    <strong>Packages → Create Package</strong> — select the software items and their order, e.g. a
+    <span class="st">Group them into a package</span>
+    Under <strong>Packages → Create Package</strong>, select the software items and their order, e.g. a
     "Standard SOE" package with your antivirus, office suite, VPN client and monitoring agent.
 </div></div>
 <p>During deployment, each install's exit code is captured and reported to the job — failures are
 visible per-application in the Jobs page.</p>
+<div class="note">Each installer runs under a <strong>timeout</strong> (default 60 minutes, set under
+<em>Settings → Software Delivery</em>). If an installer hangs past the limit it is terminated, recorded as
+a <em>timeout</em> failure on the Jobs page, and the deployment continues to the next package — one bad
+installer can't stall the whole machine. Raise the limit for large/slow installers; the change takes
+effect after the next <a href="#patch-bootwim">boot.wim patch</a>. Tip: for PowerShell-script installers,
+include <code>-NonInteractive</code> in the install command so the script errors out instead of blocking
+on a prompt.</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h3 id="bitlocker-feature">BitLocker drive encryption (Settings)</h3>
+<p>Deploy Manager can turn on BitLocker automatically at the end of the post-install phase. Enable it under
+<strong>Settings → BitLocker</strong>. Requires a TPM (present on all Secure Boot hardware); a machine
+without a ready TPM is skipped and reported, never failed.</p>
+<table>
+<tr><th>Option</th><th>What it does</th></tr>
+<tr><td><strong>Volumes to encrypt</strong></td><td><em>OS drive only</em>; <em>OS + all fixed data drives</em> (auto-detects every fixed, non-OS volume — no drive letters needed); or <em>Specific volumes</em> (semicolon-separated labels or letters). Removable/USB drives are never encrypted.</td></tr>
+<tr><td><strong>Encryption method</strong></td><td>XTS-AES 256 (recommended) or 128.</td></tr>
+<tr><td><strong>Used space only</strong></td><td>Encrypts only used space — fast, ideal for a fresh image (new data is encrypted as written). Turn off for full-disk.</td></tr>
+<tr><td><strong>Recovery-key escrow</strong></td><td>Back up each recovery key to any combination of: <em>Active Directory</em> (domain-joined), <em>Entra ID / Intune</em> (Entra/hybrid-joined machines — a pure Autopilot device isn't Entra-joined until OOBE, so Intune policy usually owns BitLocker for those, and Deploy Manager skips the Entra backup on a device that isn't Entra-joined), and/or a <em>network share</em> (writes <code>&lt;ComputerName&gt;_&lt;drive&gt;.txt</code>; the machine account needs write access). <strong>The share stores the key in clear text — lock it down to admins.</strong></td></tr>
+<tr><td><strong>AD backup is handled by my Group Policy</strong></td><td>Tick this if you already run the GPO <em>“Store BitLocker recovery information in Active Directory Domain Services.”</em> That policy escrows the key at encryption time and <em>refuses</em> the manual backup cmdlet — so without this option Deploy Manager would report a false <em>failed</em>. With it ticked, Deploy Manager skips its own AD backup and trusts the policy (confirming via the BitLocker event log where it can).</td></tr>
+<tr><td><strong>Require successful escrow</strong></td><td>If a key can't be escrowed to any enabled target, the job is marked <strong>failed</strong> for attention. The drive is left <strong>encrypted and functional</strong> — it is <strong>never auto-decrypted</strong> — so you can escrow the key manually or investigate. Leave on unless you have another escrow path.</td></tr>
+</table>
+<p>The OS drive is encrypted first with a <strong>TPM protector</strong> (transparent unlock at boot) plus a
+recovery password; each fixed data drive then gets a recovery password and <strong>auto-unlock</strong> (it
+unlocks once the OS drive has). Per-machine status shows on the <strong>Jobs</strong> page as a BitLocker
+badge (<em>protected / failed / skipped</em>), with per-volume detail on hover.</p>
+<div class="note">Recovery keys are never written to the deployment logs — only the key protector ID is.
+Look up a machine's recovery key by its computer name in AD (or your Intune portal), like any other
+BitLocker device. Enabling BitLocker takes effect after the next <a href="#patch-bootwim">boot.wim patch</a>.</div>
+<div class="warn">Your recovery keys are only as safe as your escrow. Confirm keys are actually landing in AD
+(check a test machine's computer object for the <em>BitLocker Recovery</em> tab) before relying on it
+fleet-wide — a drive encrypted with a key you can't recover is a permanent lockout.</div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <h2 id="deploy"><span class="n">15</span>Deploying a machine</h2>
+<p>Every deployment follows the same basic steps, regardless of join mode. The sections after this one walk
+through the two deployment scenarios in detail: <a href="#deploy-domain">domain join</a> and
+<a href="#deploy-autopilot">Autopilot / Intune</a>.</p>
 <div class="step"><div class="num">1</div><div class="body">
-    <strong>PXE-boot the target machine once</strong> (or add it manually under
+    <span class="st">Register the machine</span>
+    PXE-boot the target machine once (or add it manually under
     <strong>Machines → Add Machine</strong> with its MAC address). Discovered machines report their MAC,
     IP, model and serial number automatically.
 </div></div>
 <div class="step"><div class="num">2</div><div class="body">
-    <strong>Create the job</strong> — <strong>Deploy → New Deployment</strong>: pick the machine, confirm
+    <span class="st">Create the job</span>
+    Go to <strong>Deploy → New Deployment</strong>: pick the machine, confirm
     the device name (prefix is suggested), site and OU (auto-detected from subnet), choose the WIM image,
-    software package, driver package, and <strong>join mode</strong> (<em>Domain Join</em> for on-prem AD, or
-    <em>Workgroup</em> for Autopilot/Intune — the machine boots to OOBE for Entra enrollment).
-    Then choose one of three actions:
+    driver package, software package (optional), and the <strong>join mode</strong>:
+    <ul style="margin-top:8px">
+        <li><strong>Domain Join</strong> — pre-stages the computer object in AD using offline domain join.
+            The machine boots to the Windows login screen, already on the domain.</li>
+        <li><strong>Workgroup (Autopilot)</strong> — joins a workgroup instead of the domain. The machine
+            boots to the Out-of-Box Experience (OOBE) for Autopilot / Entra enrollment. You can set a
+            <strong>Group Tag</strong> to control which Autopilot deployment profile applies.</li>
+    </ul>
+    Then choose an action:
     <ul style="margin-top:8px">
         <li><strong>Save Job Only</strong> — saves the job file. You manually PXE-boot the machine (e.g. via BIOS boot menu).</li>
         <li><strong>Save Job + PXE Reboot</strong> — saves the job, then remotely sets the machine's next boot to its PXE/NIC firmware entry and reboots it via WMI. Requires the service account to have local admin rights on the target.</li>
@@ -608,40 +815,305 @@ visible per-application in the Jobs page.</p>
     </ul>
 </div></div>
 <div class="step"><div class="num">3</div><div class="body">
-    <strong>WinPE loads and images the machine.</strong> It finds its pending job within seconds and starts
-    imaging — partitioning, applying the WIM, injecting drivers, joining the domain (or workgroup for Autopilot),
-    writing <code>unattend.xml</code> with the site's timezone/locale, then rebooting into Windows setup
-    and the software phase. Workgroup deployments boot into OOBE for Autopilot enrollment instead of the desktop.
+    <span class="st">WinPE loads and images the machine</span>
+    It finds its pending job within seconds and starts
+    imaging — partitioning, applying the WIM, injecting drivers, joining the domain or workgroup,
+    writing <code>unattend.xml</code> with the site's timezone/locale, then rebooting into Windows Setup.
 </div></div>
 <div class="step"><div class="num">4</div><div class="body">
-    <strong>Watch it live</strong> — the <strong>Jobs</strong> page streams status in real time:
-    pending → imaging → software installs (per-app progress) → complete. Stale jobs are timed out
-    automatically by the watchdog. Email notifications on completion/failure can be enabled in Settings.
+    <span class="st">Post-install phase</span>
+    On first boot, a <code>SetupComplete.cmd</code> script runs
+    <code>Start-PostInstall.ps1</code>, which:
+    <ul style="margin-top:8px">
+        <li>Installs any software from the assigned package (with per-app progress reported to the Jobs page)</li>
+        <li>Installs the driver package via <code>pnputil</code> (if one was assigned)</li>
+        <li>For <strong>Autopilot jobs</strong>: collects the hardware hash, serial number and Windows Product ID,
+            submits them to the server. If <a href="#intune-auto-register">automatic Intune registration</a>
+            is enabled, the server registers the device with Intune immediately.</li>
+        <li>Marks the job as complete (or error, if any software failed)</li>
+    </ul>
 </div></div>
-<div class="ok">That's the full loop. From here, imaging a machine is: create job → PXE boot → wait for
-the green badge.</div>
+<div class="step"><div class="num">5</div><div class="body">
+    <span class="st">Watch it live</span>
+    The <strong>Jobs</strong> page streams status in real time:
+    pending → imaging → software installs (per-app progress) → complete. A watchdog times a job out if it
+    goes too long with no activity (progress or heartbeat) — see <a href="#operations">Settings → Job
+    Monitoring</a> — so a hung machine can't stay "imaging" forever, while a slow-but-progressing one is
+    left alone. Email notifications on completion/failure can be enabled in Settings.
+</div></div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2 id="certificate"><span class="n">16</span>HTTPS certificate</h2>
+<h2 id="deploy-domain"><span class="n">16</span>Domain join deployment</h2>
+<p>Use this mode when the machine will be managed by on-premises Active Directory and Group Policy.</p>
+
+<h3>Prerequisites</h3>
+<ul>
+    <li>AD service account configured in Settings with <em>Full Control</em> on Computer objects in the
+        target OUs (<a href="#svc-account">section 6</a>)</li>
+    <li>At least one site configured under <strong>Settings → Sites</strong> with the correct OU</li>
+    <li>A Windows WIM image registered under <strong>Images</strong></li>
+</ul>
+
+<h3>Walkthrough</h3>
+<div class="step"><div class="num">1</div><div class="body">
+    <span class="st">Create the deployment job</span>
+    Go to <strong>Deploy → New Deployment</strong>. Select
+    the machine, enter the device name (e.g. <code>CORP-PC042</code>), and verify the site/OU
+    are auto-detected correctly. Set join mode to <strong>Domain Join</strong>.
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    <span class="st">Assign content</span>
+    Choose the WIM image, driver package (if you have one for
+    the model), and a software package (e.g. your standard SOE build with AV, Office, VPN).
+</div></div>
+<div class="step"><div class="num">3</div><div class="body">
+    <span class="st">Start imaging</span>
+    Click <em>Save Job + PXE Reboot</em> (if the machine is online) or
+    <em>Save Job Only</em> and PXE-boot manually.
+</div></div>
+<div class="step"><div class="num">4</div><div class="body">
+    <span class="st">Machine images and reboots</span>
+    After Windows Setup completes, the post-install phase
+    installs software and reports results. The machine arrives at the Windows login screen, already
+    domain-joined in the correct OU with the site's timezone and locale applied.
+</div></div>
+<div class="ok">The job turns green on the Jobs page. The machine is on the domain, Group Policy will
+apply on next logon, and software is installed.</div>
+
+<h3>Re-imaging an existing domain machine</h3>
+<p>Deploy Manager detects if the computer object already exists in AD. If it does, the existing OU is
+preserved (the machine is re-joined in place) rather than being moved to the site's default OU. This
+prevents machines from unexpectedly changing OUs during a re-image.</p>
+<div class="note">Some domain controllers block re-use of an existing computer object since
+<strong>KB5020276</strong>. If a re-image fails to join the domain with error <code>2732</code>, enable
+<strong>"Recreate computer object when re-use is blocked"</strong> in Settings — see
+<a href="#account-reuse">computer account re-use (section 6)</a>.</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="deploy-autopilot"><span class="n">17</span>Autopilot / Intune deployment</h2>
+<p>Use this mode when the machine will be managed by Microsoft Intune via Autopilot. The machine
+boots to the Out-of-Box Experience (OOBE) where the user signs in with their Entra ID credentials to
+complete enrollment.</p>
+
+<h3>Prerequisites</h3>
+<ul>
+    <li>An Intune tenant with an <strong>Autopilot deployment profile</strong> configured
+        (user-driven or self-deploying, depending on your scenario)</li>
+    <li>A Windows WIM image (a clean, generic Windows 11 Pro/Enterprise image works best)</li>
+    <li>Internet connectivity from the target machine after imaging (for Autopilot enrollment at OOBE)</li>
+</ul>
+
+<h3>Walkthrough</h3>
+<div class="step"><div class="num">1</div><div class="body">
+    <span class="st">Create the deployment job</span>
+    Go to <strong>Deploy → New Deployment</strong>. Select
+    the machine, enter the device name, and set join mode to <strong>Workgroup (Autopilot)</strong>.
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    <span class="st">Set a group tag (optional)</span>
+    The group tag controls which Autopilot deployment
+    profile is assigned to the device. Leave blank if your Intune tenant has a single default profile,
+    or enter the tag that matches your profile assignment rules (e.g. <code>Standard</code>,
+    <code>Kiosk</code>, <code>SharedDevice</code>).
+</div></div>
+<div class="step"><div class="num">3</div><div class="body">
+    <span class="st">Assign content</span>
+    Choose the WIM image and driver package. A software package is
+    <strong>optional</strong> — for Intune-managed machines you will typically deploy software via
+    Intune rather than the Deploy Manager package. Leaving the package empty is fine; the system
+    skips software installation cleanly.
+</div></div>
+<div class="step"><div class="num">4</div><div class="body">
+    <span class="st">Start imaging</span>
+    Click <em>Save Job + PXE Reboot</em> or PXE-boot manually.
+</div></div>
+<div class="step"><div class="num">5</div><div class="body">
+    <span class="st">Post-install collects hardware details</span>
+    After Windows Setup completes, the post-install script collects:
+    <ul style="margin-top:6px">
+        <li>The <strong>hardware hash</strong> (from <code>MDM_DevDetail_Ext01</code>)</li>
+        <li>The <strong>serial number</strong> (from <code>Win32_BIOS</code>)</li>
+        <li>The <strong>Windows Product ID</strong> (from the registry)</li>
+    </ul>
+    <p>These are submitted to the Deploy Manager API. On the Jobs page, the Autopilot badge turns
+    <strong style="color:var(--green)">green</strong> once the hash is collected.</p>
+</div></div>
+<div class="step"><div class="num">6</div><div class="body">
+    <span class="st">Register the device in Intune</span>
+    There are two options:
+    <ul style="margin-top:6px">
+        <li><strong>Automatic</strong> (recommended) — enable
+            <a href="#intune-auto-register">automatic Intune registration</a> in Settings. Deploy Manager
+            registers the device via the Graph API immediately after collecting the hash. The Jobs page
+            shows the Intune status in real time (importing → registered → profile assigned).</li>
+        <li><strong>Manual</strong> — download the Autopilot CSV from the Jobs page (per-device or bulk
+            export) and import it into the
+            <a href="https://intune.microsoft.com/#view/Microsoft_Intune_Enrollment/AutopilotDevices.ReactView">Intune
+            portal</a> under Devices → Enroll devices → Windows Autopilot devices → Import.</li>
+    </ul>
+</div></div>
+<div class="step"><div class="num">7</div><div class="body">
+    <span class="st">Machine boots to OOBE</span>
+    After the post-install phase completes, the machine reboots
+    into the Windows Out-of-Box Experience. If the device is registered in Intune with a profile
+    assigned, OOBE shows the Autopilot branding (your organisation's logo and name). The user
+    signs in with their Entra ID credentials to complete enrollment.
+</div></div>
+<div class="warn">The device <strong>must be registered in Intune with a deployment profile assigned
+before</strong> the user reaches OOBE. If using manual CSV import, allow up to 40 minutes for Intune to
+process the import and assign a profile. With automatic registration enabled, Deploy Manager polls for
+profile assignment and shows the status on the Jobs page — wait for the
+<strong style="color:var(--green)">Intune profile assigned</strong> badge before handing the machine to
+the user.</div>
+
+<h3>Autopilot CSV format</h3>
+<p>The CSV exported by Deploy Manager follows the standard Intune import format:</p>
+<pre>Device Serial Number,Windows Product ID,Hardware Hash,Group Tag
+ABC1234567,12345-OEM-1234567-12345,AQAA9f+L...base64...,Standard</pre>
+<p>You can download a CSV for a single device (click the green <strong>CSV</strong> badge next to the
+Autopilot indicator on the Jobs page) or for all devices with collected hashes (click the
+<strong>Autopilot CSV</strong> button at the top of the Jobs page).</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="intune-setup"><span class="n">18</span>Entra app permissions for Intune</h2>
+<p>To use automatic Intune registration, your Entra ID app registration needs an additional API
+permission. If you are only using Entra SSO (sign-in to the web UI), no changes are needed — this
+section is only required for the <a href="#intune-auto-register">automatic Autopilot registration</a>
+feature.</p>
+<div class="step"><div class="num">1</div><div class="body">
+    <span class="st">Open your app registration</span>
+    In the <a href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade/quickStartType~/null/sourceType/Microsoft_AAD_IAM">Entra
+    admin centre</a>, go to <strong>App registrations</strong> and open the app you created for Deploy Manager.
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    <span class="st">Add the API permission</span>
+    Go to <strong>API permissions → Add a permission →
+    Microsoft Graph → Application permissions</strong>. Search for and add:
+    <pre>DeviceManagementServiceConfig.ReadWrite.All</pre>
+    <div class="note">This is an <strong>application</strong> permission (not delegated). It allows the
+    server to manage Autopilot device identities without a signed-in user.</div>
+</div></div>
+<div class="step"><div class="num">3</div><div class="body">
+    <span class="st">Grant admin consent</span>
+    Click <strong>Grant admin consent for &lt;your tenant&gt;</strong>
+    and confirm. The permission status should change to
+    <em style="color:var(--green)">Granted for &lt;tenant&gt;</em>.
+</div></div>
+<div class="step"><div class="num">4</div><div class="body">
+    <span class="st">Verify existing credentials</span>
+    Your app registration should already have a Tenant ID,
+    Client ID, and Client Secret configured in Deploy Manager under <strong>Settings → Entra ID</strong>
+    (these are the same credentials used for SSO). If you have not set up Entra SSO yet, enter the
+    Tenant ID, Client ID and create a client secret in Entra, then paste it into Settings. The secret
+    is encrypted at rest.
+</div></div>
+<div class="ok">The Entra app now has permission to read, create and update Autopilot device identities
+via the Microsoft Graph API. Proceed to enable the feature in Deploy Manager Settings.</div>
+
+<h3>Required permissions summary</h3>
+<table>
+<tr><th>Permission</th><th>Type</th><th>Purpose</th></tr>
+<tr><td><code>DeviceManagementServiceConfig.ReadWrite.All</code></td><td>Application</td><td>Register devices in Autopilot, check existing registrations, update group tags, poll for profile assignment</td></tr>
+<tr><td><code>openid</code>, <code>profile</code>, <code>email</code></td><td>Delegated</td><td>Entra SSO sign-in (only needed if SSO is enabled)</td></tr>
+</table>
+
+<h3>If you are not using Entra SSO</h3>
+<p>You can use the Intune auto-registration feature without enabling Entra SSO for the web UI. Simply
+enter the Tenant ID, Client ID and Client Secret in Settings under the Entra ID section — the values
+are used for Graph API calls regardless of the sign-in method. You can leave the sign-in method set to
+<em>Breakglass only</em>.</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="intune-auto-register"><span class="n">19</span>Automatic Autopilot registration</h2>
+<p>When enabled, Deploy Manager automatically registers devices with Intune Autopilot as soon as
+the hardware hash is collected during post-install. This eliminates the manual step of downloading
+a CSV and importing it into the Intune portal.</p>
+
+<h3>Enable the feature</h3>
+<div class="step"><div class="num">1</div><div class="body">
+    <span class="st">Complete the Entra app setup</span>
+    Follow <a href="#intune-setup">section 18</a> — the <code>DeviceManagementServiceConfig.ReadWrite.All</code>
+    permission must be granted with admin consent.
+</div></div>
+<div class="step"><div class="num">2</div><div class="body">
+    <span class="st">Enable the toggle</span>
+    Go to <strong>Settings → Intune Autopilot</strong>, tick <strong>Automatically register devices in
+    Intune Autopilot</strong>, and save.
+</div></div>
+<div class="step"><div class="num">3</div><div class="body">
+    <span class="st">Re-patch boot.wim</span>
+    Go to <strong>Settings → Boot Image</strong> and click <strong>Patch boot.wim</strong>.
+    This bakes the latest post-install script (which now sends the serial number to the API) into the
+    boot image.
+</div></div>
+<div class="ok">The next Autopilot deployment will automatically register the device in Intune.</div>
+
+<h3>How it works</h3>
+<p>When the post-install script submits the hardware hash, serial number and product ID to the Deploy
+Manager API, the server checks if automatic registration is enabled. If it is:</p>
+<ol>
+    <li><strong>Checks Intune</strong> — queries the Graph API by serial number to see if the device is
+        already registered as an Autopilot device.</li>
+    <li><strong>If already registered</strong> — skips import. If the group tag in Deploy Manager differs
+        from the one in Intune, the server updates the group tag in Intune to match.</li>
+    <li><strong>If not registered</strong> — imports the device into Intune with the hardware hash, serial
+        number and group tag. Polls for import completion (typically 1–15 minutes).</li>
+    <li><strong>Polls for profile assignment</strong> — after the device is registered, continues polling
+        Intune until a deployment profile is assigned (typically 1–10 minutes after import).</li>
+</ol>
+
+<h3>Intune status on the Jobs page</h3>
+<p>The Jobs page shows the Intune registration status in real time alongside the Autopilot badge:</p>
+<table>
+<tr><th>Status</th><th>Meaning</th></tr>
+<tr><td><span style="color:var(--muted)">Checking Intune...</span></td><td>Querying Graph API to see if the device already exists</td></tr>
+<tr><td><span style="color:var(--muted)">Importing to Intune...</span></td><td>Import request submitted; waiting for Intune to process it</td></tr>
+<tr><td><span style="color:var(--accent)">Intune registered</span></td><td>Device is registered in Autopilot but no deployment profile assigned yet</td></tr>
+<tr><td><span style="color:var(--green)">Intune profile assigned</span></td><td>A deployment profile is assigned — the machine is ready for Autopilot enrollment at OOBE</td></tr>
+<tr><td><span style="color:var(--red)">Intune error</span></td><td>Registration failed — check the Deploy Manager service logs in Event Viewer for details</td></tr>
+</table>
+
+<div class="warn">The registration process runs in the background on the server. The machine continues its
+post-install phase and may reboot to OOBE before registration is complete. If you are using a
+<strong>user-driven</strong> Autopilot profile, the user will be prompted to sign in at OOBE — they
+should wait until the Jobs page shows <strong style="color:var(--green)">Intune profile assigned</strong>
+before signing in, otherwise OOBE will not show the Autopilot experience. If using a
+<strong>self-deploying</strong> profile, the machine will retry automatically until the profile is
+available.</div>
+
+<h3>Troubleshooting automatic registration</h3>
+<table>
+<tr><th>Symptom</th><th>Check</th></tr>
+<tr><td>Status stays on "Checking Intune..." or shows error</td><td>Verify the Entra app credentials (Tenant ID, Client ID, Secret) are correct in Settings. Check that the <code>DeviceManagementServiceConfig.ReadWrite.All</code> permission is granted with admin consent. Check the Deploy Manager service logs in Event Viewer.</td></tr>
+<tr><td>Import succeeds but profile never assigned</td><td>Ensure an Autopilot deployment profile exists in Intune and is assigned to a group that matches the device (either "All devices" or a dynamic group based on the group tag). Profile assignment can take up to 40 minutes in some tenants.</td></tr>
+<tr><td>Group tag not updating</td><td>The Graph API requires <code>DeviceManagementServiceConfig.ReadWrite.All</code> to update group tags. Verify admin consent is granted.</td></tr>
+<tr><td>Serial number empty or wrong</td><td>The serial number is read from <code>Win32_BIOS</code> during post-install. Some virtual machines or custom hardware report blank or generic serial numbers — Intune requires a valid serial. Re-patch boot.wim to ensure the latest post-install script is in use.</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="certificate"><span class="n">20</span>HTTPS certificate</h2>
 <p>A 5-year self-signed certificate is generated on first start. To replace it with one signed by your
 internal CA (recommended — removes browser warnings and enables full certificate validation from WinPE):</p>
 <div class="step"><div class="num">1</div><div class="body">
-    <strong>Settings → Certificate → Generate CSR</strong> — enter the server's DNS name(s) and IP(s) as
+    <span class="st">Generate a CSR</span>
+    Under <strong>Settings → Certificate → Generate CSR</strong>, enter the server's DNS name(s) and IP(s) as
     subject alternative names. The private key never leaves the server (stored encrypted until the signed
     certificate is installed).
 </div></div>
 <div class="step"><div class="num">2</div><div class="body">
-    <strong>Sign the CSR</strong> with your CA — for AD CS:
+    <span class="st">Sign the CSR</span>
+    Sign with your CA — for AD CS:
     <pre>certreq -submit -attrib "CertificateTemplate:WebServer" deploymanager.csr</pre>
 </div></div>
 <div class="step"><div class="num">3</div><div class="body">
-    <strong>Upload the signed certificate</strong> (PEM/Base64) plus any chain on the same page. It is
+    <span class="st">Upload the signed certificate</span>
+    Upload the certificate (PEM/Base64) plus any chain on the same page. It is
     served to new connections immediately — no service restart needed. The dashboard warns 30 days before
     expiry.
 </div></div>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2 id="users"><span class="n">17</span>Users &amp; authentication</h2>
+<h2 id="users"><span class="n">21</span>Users &amp; authentication</h2>
 <ul>
     <li><strong>Breakglass login</strong> — the password set during first-run setup, always available at
         <code>/auth/login</code>. Login attempts are rate-limited (10 per 15 minutes per IP).</li>
@@ -661,7 +1133,7 @@ internal CA (recommended — removes browser warnings and enables full certifica
 </ul>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2 id="operations"><span class="n">18</span>Operations &amp; backup</h2>
+<h2 id="operations"><span class="n">22</span>Operations &amp; backup</h2>
 <h3>Backup</h3>
 <p>Everything that matters lives in <span class="kbd-path">C:\ProgramData\DeployManager</span> — back up
 this folder. Critical files within it:</p>
@@ -685,7 +1157,7 @@ deliberately left behind</strong> (your database, images and keys) — delete it
 complete removal.</p>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2 id="troubleshooting"><span class="n">19</span>Troubleshooting</h2>
+<h2 id="troubleshooting"><span class="n">23</span>Troubleshooting</h2>
 <table>
 <tr><th>Symptom</th><th>Check</th></tr>
 <tr><td>Web UI unreachable</td><td><code>sc.exe query DeployManager</code>. Service logs are in Event Viewer → Application, sources <code>DeployManager</code> and <code>.NET Runtime</code>. Remember: the UI is HTTPS on <strong>8090</strong> — port 8080 serves files only and returns 404 for everything else.</td></tr>
@@ -695,13 +1167,19 @@ complete removal.</p>
 <tr><td>Secure Boot violation loading the boot file</td><td>Confirm DHCP option 67 is <code>ipxe-shim.efi</code> (the Microsoft-signed shim), <em>not</em> <code>ipxe.efi</code> directly. Re-run <code>Get-IpxeBinaries.ps1</code> if the shim is missing from the TFTP root. If a specific NIC still fails, try the <code>snponly-shim.efi</code> chain.</td></tr>
 <tr><td>iPXE says "BCD not found" or "boot.sdi not found"</td><td>The TFTP Boot folder is missing <code>BCD</code> or <code>boot.sdi</code>. Copy them from your WinPE build directory: <code>copy C:\WinPE\media\Boot\BCD "%ProgramData%\DeployManager\tftp\Boot\"</code> and the same for <code>boot.sdi</code>. See <a href="#build-winpe">section 8, step 7</a>.</td></tr>
 <tr><td>WinPE boots but "CANNOT REACH DEPLOYMANAGER SERVER"</td><td>The boot.wim was not patched (<a href="#patch-bootwim">section 11</a>), the API URL in it is stale, or WinPE has no NIC driver (<a href="#build-winpe">section 8, step 4</a>) — check <code>ipconfig</code> in the WinPE console.</td></tr>
-<tr><td>Machine images but does not join the domain</td><td>Service account credentials in Settings, its <em>Full Control</em> delegation on Computer objects in the target OU (<a href="#svc-account">section 5</a>), and that the site's OU DN is valid. For re-images, the service account must also be the <strong>owner</strong> of the existing computer object (KB5020276).</td></tr>
+<tr><td>Deploy reports "disk enumeration timed out" / "no fixed disk found" and reboots</td><td>The machine's <strong>storage driver</strong> is missing from boot.wim — most common on newer hardware with <strong>Intel VMD / Rapid Storage</strong> enabled. Inject the vendor storage driver into <code>boot.wim</code> (<a href="#build-winpe">section 8, step 4</a>) <em>and</em> into the install image, or set the BIOS SATA/NVMe mode to <strong>AHCI</strong>. The deployment now detects this and reboots the machine back to its OS rather than freezing.</td></tr>
+<tr><td>Machine images but does not join the domain</td><td>Service account credentials in Settings, its <em>Full Control</em> delegation on Computer objects in the target OU (<a href="#svc-account">section 6</a>), and that the site's OU DN is valid. For a <strong>re-image</strong> that fails with <code>NetProvisionComputerAccount returned 2732 (0x00000AAC)</code>, the DC is blocking computer-account re-use (KB5020276) — enable <strong>"Recreate computer object when re-use is blocked"</strong> in Settings: see <a href="#account-reuse">computer account re-use</a>.</td></tr>
+<tr><td>PXE Reboot / Pre-stage Reboot fails: "Access is denied" / "System error 5" on <code>admin$</code></td><td>The service account is <strong>not a local administrator</strong> on the target machine — required to write to the admin share and launch via WMI. Grant it via GPO: see <a href="#remote-reboot-admin">local admin for remote reboot</a>. <strong>Check the account matches:</strong> <code>System error 5</code> (vs <code>1326</code> for a bad password) means the account authenticated but isn't a local admin — often because the account granted local admin is <em>not the same</em> account configured in Settings. (Imaging still works without this; only the remote-reboot buttons need it.)</td></tr>
+<tr><td>Machine "Look up" fails: "WinRM cannot complete the operation" (5985)</td><td>WinRM isn't enabled on the target. Enter the MAC manually, or enable WinRM by GPO: see <a href="#winrm-lookup">WinRM for machine lookup</a>. Lookup is a convenience — PXE Reboot doesn't need WinRM.</td></tr>
 <tr><td>Software installs report failures</td><td>Expand the job's software results in the Jobs page — each row has the installer's exit code and error output.</td></tr>
 <tr><td>Service fails to start after config changes</td><td>Almost always an invalid <code>appsettings.json</code> or an in-use port. The exact exception is in Event Viewer → Application, source <code>.NET Runtime</code>.</td></tr>
+<tr><td>Autopilot badge stays blue after imaging</td><td>The hardware hash has not been collected. Ensure the boot.wim has been re-patched after upgrading (<a href="#patch-bootwim">section 11</a>) — post-install scripts are baked into the WIM, not read from disk at runtime.</td></tr>
+<tr><td>Autopilot CSV has empty Product ID or serial number</td><td>Re-patch boot.wim to get the latest post-install script. Older versions did not collect all fields.</td></tr>
+<tr><td>Intune auto-registration not triggering</td><td>Check that the toggle is enabled in <strong>Settings → Intune Autopilot</strong>, the Entra credentials are configured, and the boot.wim has been re-patched (the post-install script must send the serial number for registration to start).</td></tr>
 </table>
 
 <!-- ═══════════════════════════════════════════════════════ -->
-<h2 id="reference"><span class="n">20</span>Reference</h2>
+<h2 id="reference"><span class="n">24</span>Reference</h2>
 <h3>Paths</h3>
 <table>
 <tr><th>Path</th><th>Purpose</th></tr>
@@ -725,6 +1203,8 @@ complete removal.</p>
 <tr><td><code>http://server:8080/jobs/&lt;mac&gt;.json</code></td><td>Per-machine job file polled by WinPE</td></tr>
 <tr><td><code>http://server:8080/winpe/…</code></td><td>WinPE boot files over HTTP (wimboot path)</td></tr>
 <tr><td><code>http://server:8080/images/&lt;path&gt;</code></td><td>WIM / driver downloads from the images directory</td></tr>
+<tr><td><code>https://server:8090/api/jobs/&lt;mac&gt;/hardware-hash</code></td><td>Submit hardware hash, serial number and product ID (POST, token-protected)</td></tr>
+<tr><td><code>https://server:8090/api/jobs/&lt;mac&gt;/intune-status</code></td><td>Check Intune registration status for a job (GET, token-protected)</td></tr>
 </table>
 <h3>Services</h3>
 <table>
@@ -733,10 +1213,33 @@ complete removal.</p>
 <tr><td><code>Tftpd64</code></td><td>LocalSystem</td><td>Automatic</td></tr>
 </table>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="changelog"><span class="n">25</span>Recent changes</h2>
+<p>Notable changes, newest first. Version numbers refer to the installer
+(<code>DeployManager-&lt;version&gt;-Setup.msi</code>).</p>
+<table>
+<tr><th>Version</th><th>Change</th></tr>
+<tr><td><strong>1.20.5</strong></td><td><strong>BitLocker: log-security fix and smarter escrow.</strong> <em>Security:</em> the recovery password could be captured into <code>PostInstall.log</code> in clear text (the enabling cmdlets echo it on the warning stream) — it is now suppressed and never reaches the log. Added an <strong>“AD backup is handled by my Group Policy”</strong> option so environments whose BitLocker GPO already escrows to AD DS no longer report a false <em>failed</em>. <em>“Require successful escrow”</em> now leaves a good drive <strong>encrypted and flags the job</strong> instead of auto-decrypting it, and the Entra backup is skipped on devices that aren't Entra-joined. Requires a boot.wim re-patch.</td></tr>
+<tr><td><strong>1.20.4</strong></td><td><strong>Docs: WinRM lookup + service-account match.</strong> Documented enabling WinRM by GPO for the machine-lookup feature, and clarified that the account granted local admin for remote reboot must be the <em>same</em> account configured in Settings (a mismatch shows System error 5 despite a correct password). Docs-only; application code unchanged from 1.20.2.</td></tr>
+<tr><td><strong>1.20.3</strong></td><td><strong>Docs: remote-reboot local-admin setup.</strong> Documented how to grant the deployment service account local administrator rights on target machines via Group Policy Preferences — required for the PXE Reboot / Pre-stage Reboot actions — with a troubleshooting entry for the "System error 5 / access denied" symptom. Docs-only; application code unchanged from 1.20.2.</td></tr>
+<tr><td><strong>1.20.2</strong></td><td><strong>Jobs page — live activity indicator.</strong> Active deployments now show a "last activity <em>Xm ago</em>" liveness line (from the heartbeat data), turning amber if a job goes quiet and nears the inactivity timeout. Timed-out jobs are also visually distinguished from errors (amber clock vs red warning). Server/UI-only — no boot.wim re-patch.</td></tr>
+<tr><td><strong>1.20.1</strong></td><td><strong>WinPE disk-hang self-recovery.</strong> If disk enumeration stalls — a missing storage driver on Intel VMD / Rapid Storage hardware, which used to freeze WinPE silently before any disk change — the deployment now times out (120 s), reports an actionable error, and reboots the machine back to its existing OS instead of hanging. Requires a boot.wim re-patch.</td></tr>
+<tr><td><strong>1.20.0</strong></td><td><strong>Activity-based job watchdog + heartbeats.</strong> The stuck-job watchdog now times out on <em>inactivity</em> (no progress or heartbeat) instead of total elapsed time — so a legitimately long deployment is never falsely failed, and a real hang is caught within minutes. WinPE and PostInstall send heartbeats during long steps (WIM download/apply, long installers). Thresholds are configurable under <a href="#operations">Settings → Job Monitoring</a>. Requires a boot.wim re-patch for the client heartbeats.</td></tr>
+<tr><td><strong>1.19.1</strong></td><td><strong>BitLocker: Entra ID and network-share key escrow.</strong> Recovery keys can now be escrowed to <em>Entra ID / Intune</em> (for Entra/hybrid-joined machines) and/or saved to a secured <em>network share</em>, in addition to Active Directory — any combination. Requires a boot.wim re-patch.</td></tr>
+<tr><td><strong>1.19.0</strong></td><td><strong>BitLocker drive encryption after imaging.</strong> Optionally encrypt machines post-image — OS drive, OS + all fixed data drives (auto-detected), or specific volumes — with recovery keys escrowed to Active Directory. Configured under <a href="#bitlocker-feature">Settings → BitLocker</a>; per-machine status shows on the Jobs page. Requires a boot.wim re-patch.</td></tr>
+<tr><td><strong>1.18.3</strong></td><td><strong>Reliable software-install exit codes + bounded drive mapping.</strong> Fixed installs being mislabelled and their results not reaching the dashboard (the launcher didn't report an exit code, which also broke the result callback). The UNC drive-mapping step is now bounded (60 s) so an unreachable share can't stall a deployment before the install timeout applies.</td></tr>
+<tr><td><strong>1.18.2</strong></td><td><strong>Per-software-install timeout.</strong> A single software installer that hangs is now terminated after a configurable limit (default 60 min), recorded as a timeout failure, and the deployment continues to the next package — so one bad installer can no longer stall a machine indefinitely. Set the limit under <a href="#software">Settings → Software Delivery</a>. Requires a boot.wim re-patch.</td></tr>
+<tr><td><strong>1.18.0</strong></td><td><strong>Automatic re-create of existing computer objects.</strong> When re-imaging a machine whose AD object already exists and the domain controller blocks account re-use (KB5020276, error <code>2732</code>), Deploy Manager can delete and recreate the object so the domain join still succeeds. Opt-in under <a href="#account-reuse">Settings → Active Directory</a>.</td></tr>
+<tr><td><strong>1.17.7</strong></td><td><strong>API server URL enforced to HTTPS.</strong> The API listens on HTTPS only; an <code>http://</code> value — a common setup mistake that silently broke WinPE/PostInstall callbacks — is now auto-corrected to <code>https://</code> on save.</td></tr>
+<tr><td><strong>1.17.6</strong></td><td><strong>Fixed boot.wim patching and remote reboot on some servers.</strong> Those actions launched PowerShell by name and failed with "cannot find the file specified" where the service's PATH lacked the PowerShell folder; they now use PowerShell's absolute path.</td></tr>
+<tr><td><strong>1.17.5</strong></td><td><strong>Automatic Intune Autopilot registration.</strong> Optionally registers devices with Intune via the Microsoft Graph API once the hardware hash is collected — no manual CSV import. See <a href="#intune-auto-register">sections 18–19</a>.</td></tr>
+<tr><td><strong>1.17.4</strong></td><td><strong>Autopilot improvements.</strong> Hardware-hash collection now also captures the Windows Product ID and serial number; per-device Autopilot CSV download; the Autopilot badge turns green once the hash is collected; deployments with no software package no longer error.</td></tr>
+</table>
+
 <footer>
     Deploy Manager — © 2026 Jesse Kozeluh · Business Source License 1.1 ·
     Provided as-is with no support or warranty.
-    Bundled components: tftpd64 (Ph. Jounin, EUPL), iPXE/wimboot (GPL, downloaded separately).
+    Bundled components: tftpd64 (Ph. Jounin, EUPL), iPXE/wimboot (GPL, bundled in the installer).
     This guide is installed at <code>C:\Program Files\DeployManager\docs\index.html</code>.
 </footer>
 

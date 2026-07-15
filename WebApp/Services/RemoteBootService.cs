@@ -114,7 +114,7 @@ Remove-Item $remoteScriptUNC -Force -ErrorAction SilentlyContinue
         {
             await File.WriteAllTextAsync(orchestratorPath, OrchestratorScript);
 
-            var psi = new ProcessStartInfo("powershell.exe",
+            var psi = new ProcessStartInfo(SystemPaths.PowerShell,
                 $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{orchestratorPath}\" -Hostname \"{hostname}\" -Id \"{id}\"")
             {
                 RedirectStandardOutput = true,
@@ -264,7 +264,7 @@ Write-Output 'TIMEOUT'
         {
             await File.WriteAllTextAsync(orchestratorPath, StagingOrchestratorScript);
 
-            var psi = new ProcessStartInfo("powershell.exe",
+            var psi = new ProcessStartInfo(SystemPaths.PowerShell,
                 $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{orchestratorPath}\" -Hostname \"{hostname}\" -Id \"{id}\" -StageUrl \"{stageUrl}\"")
             {
                 RedirectStandardOutput = true,

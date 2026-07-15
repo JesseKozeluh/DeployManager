@@ -53,7 +53,7 @@ public class IndexModel : PageModel
     public async Task<IActionResult> OnPostAsync(
         string machineId, string deviceName, string site, string ou,
         string wimName, string packageId, string driverPackageId,
-        string joinMode, string workgroup, string action)
+        string joinMode, string workgroup, string groupTag, string action)
     {
         Load();
         DeviceName = deviceName; Site = site; OU = ou; WimName = wimName;
@@ -84,7 +84,8 @@ public class IndexModel : PageModel
                 PackageId       = packageId ?? "",
                 DriverPackageId = driverPackageId ?? "",
                 JoinMode        = joinMode ?? "domain",
-                Workgroup       = string.IsNullOrWhiteSpace(workgroup) ? "WORKGROUP" : workgroup.Trim().ToUpper()
+                Workgroup       = string.IsNullOrWhiteSpace(workgroup) ? "WORKGROUP" : workgroup.Trim().ToUpper(),
+                GroupTag        = joinMode == "workgroup" ? TruncateTag(groupTag) : ""
             };
 
             if (action == "pxeboot")
@@ -146,6 +147,12 @@ public class IndexModel : PageModel
         Packages       = _data.GetPackages();
         DriverPackages = _data.GetDriverPackages().Where(d => d.Enabled).ToList();
         Wims           = _data.GetWims().Where(w => w.Enabled).ToList();
+    }
+
+    private static string TruncateTag(string? v)
+    {
+        var t = v?.Trim() ?? "";
+        return t.Length > 256 ? t[..256] : t;
     }
 
     private bool RunPreflightChecks(string wimName, string? joinMode = "domain")

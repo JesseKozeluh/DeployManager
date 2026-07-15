@@ -2,6 +2,7 @@
 WebApp/bin/
 WebApp/obj/
 WebApp/.vs/
+WebApp/binReleasenet8.0win-x64publish/
 *.user
 
 # Installer build output

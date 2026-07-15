@@ -66,6 +66,73 @@
             </div>
         </div>
 
+        @* WinPE Drivers card *@
+        <div class="card mb-4">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi bi-motherboard"></i> WinPE Drivers
+                <span class="badge bg-secondary ms-auto">@Model.DriverPaths.Count</span>
+            </div>
+            <div class="card-body">
+                <p class="text-secondary" style="font-size:.82rem">
+                    Driver folders listed here are copied into <code>boot.wim</code> when you
+                    click <strong>Patch boot.wim</strong> below. WinPE loads them via
+                    <code>pnputil</code> at boot time before disk detection.
+                    Add NIC or storage controller drivers that WinPE needs to see the network
+                    or local disk.
+                </p>
+
+                @if (Model.DriverPaths.Any())
+                {
+                    <table class="table table-sm mb-3" style="font-size:.84rem">
+                        <thead><tr><th>Driver Path</th><th>Status</th><th></th></tr></thead>
+                        <tbody>
+                        @foreach (var dp in Model.DriverPaths)
+                        {
+                            var exists = System.IO.Directory.Exists(dp);
+                            <tr>
+                                <td class="font-monospace" style="word-break:break-all">@dp</td>
+                                <td>
+                                    @if (exists)
+                                    {
+                                        <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Found</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Not found</span>
+                                    }
+                                </td>
+                                <td>
+                                    <form method="post" asp-page-handler="RemoveDriver" class="d-inline">
+                                        <input type="hidden" name="path" value="@dp" />
+                                        <button type="submit" class="btn btn-sm btn-outline-danger py-0" title="Remove">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <div class="text-secondary mb-3" style="font-size:.84rem">
+                        <i class="bi bi-info-circle me-1"></i>No WinPE drivers configured.
+                        WinPE will use inbox drivers only.
+                    </div>
+                }
+
+                <form method="post" asp-page-handler="AddDriver" class="d-flex gap-2">
+                    <input asp-for="NewDriverPath" class="form-control form-control-sm font-monospace"
+                           placeholder="\\server\drivers\NIC\rt640x64.inf_amd64_..." style="flex:1" />
+                    <button type="submit" class="btn btn-sm btn-outline-primary text-nowrap">
+                        <i class="bi bi-plus-circle me-1"></i>Add
+                    </button>
+                </form>
+                <div class="form-text">Full path to a folder containing .inf driver files. One folder per entry.</div>
+            </div>
+        </div>
+
         @* Patch card *@
         <div class="card mb-4">
             <div class="card-header d-flex align-items-center gap-2">
@@ -106,6 +173,19 @@
                                 else
                                 {
                                     <span class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Not set — configure in <a href="/Settings/Index">Settings</a></span>
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <th class="text-secondary fw-normal">WinPE drivers</th>
+                            <td>
+                                @if (Model.DriverPaths.Any())
+                                {
+                                    <span class="text-success">@Model.DriverPaths.Count folder(s) will be staged</span>
+                                }
+                                else
+                                {
+                                    <span class="text-secondary">None configured</span>
                                 }
                             </td>
                         </tr>

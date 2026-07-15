@@ -32,7 +32,15 @@
     <Property Id="ARPPRODUCTICON" Value="DmIcon.ico" />
 
     <!-- Replace older versions; block downgrade -->
-    <MajorUpgrade DowngradeErrorMessage="A newer version of Deploy Manager is already installed. Uninstall it first." />
+    <MajorUpgrade Schedule="afterInstallInitialize"
+                  DowngradeErrorMessage="A newer version of Deploy Manager is already installed. Uninstall it first." />
+
+    <!-- Gracefully close the tray app before upgrading its files -->
+    <util:CloseApplication Id="CloseTrayApp"
+                           Target="DeployManagerTray.exe"
+                           CloseMessage="yes"
+                           RebootPrompt="no"
+                           Description="The Deploy Manager tray monitor is running and needs to be closed before the upgrade can continue." />
 
     <!-- Single embedded CAB for portability -->
     <MediaTemplate EmbedCab="yes" />
@@ -168,11 +176,14 @@
                       Type="ownProcess"
                       Vital="yes"
                       Interactive="no" />
-      <ServiceControl Id="DeployManagerControl"
+      <ServiceControl Id="DeployManagerStop"
                       Name="DeployManager"
-                      Start="install"
                       Stop="both"
                       Remove="uninstall"
+                      Wait="yes" />
+      <ServiceControl Id="DeployManagerStart"
+                      Name="DeployManager"
+                      Start="install"
                       Wait="no" />
     </Component>
 
@@ -285,11 +296,14 @@
                       Type="ownProcess"
                       Vital="yes"
                       Interactive="no" />
-      <ServiceControl Id="Tftpd64Control"
+      <ServiceControl Id="Tftpd64Stop"
                       Name="Tftpd64"
-                      Start="install"
                       Stop="both"
                       Remove="uninstall"
+                      Wait="yes" />
+      <ServiceControl Id="Tftpd64Start"
+                      Name="Tftpd64"
+                      Start="install"
                       Wait="no" />
     </Component>
 

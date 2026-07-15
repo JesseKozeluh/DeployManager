@@ -112,6 +112,13 @@
         </div>
     </div>
 
+    <div class="mb-3" id="groupTagGroup" style="display:none">
+        <label class="form-label fw-semibold">Autopilot Group Tag</label>
+        <input name="GroupTag" id="groupTagInput" class="form-control font-monospace"
+               value="" maxlength="256" placeholder="e.g. Standard-User, Kiosk" />
+        <div class="form-text">Optional. Used to assign the device to an Autopilot deployment profile in Intune.</div>
+    </div>
+
     <div class="mb-3">
         <label class="form-label fw-semibold">Windows Image <span class="text-danger">*</span></label>
         <select name="WimName" class="form-select" required>
@@ -250,6 +257,7 @@ document.getElementById('joinModeSelect').addEventListener('change', function() 
     const wg = this.value === 'workgroup';
     document.getElementById('ouGroup').style.display        = wg ? 'none' : '';
     document.getElementById('workgroupGroup').style.display  = wg ? '' : 'none';
+    document.getElementById('groupTagGroup').style.display   = wg ? '' : 'none';
 });
 
 if (document.getElementById('machineSelect').value)

@@ -27,6 +27,13 @@ public static class OfflineDomainJoin
     private const uint NETSETUP_PROVISION_DOWNLEVEL_PRIV_SUPPORT = 0x00000001;
     private const uint NETSETUP_PROVISION_REUSE_ACCOUNT          = 0x00000002;
 
+    /// <summary>
+    /// NERR code returned when a domain controller blocks re-use of an existing
+    /// computer account under the KB5020276 hardening. The caller can detect this
+    /// specifically to fall back to delete-and-recreate.
+    /// </summary>
+    public const int NERR_AccountReuseBlockedByPolicy = 2732;
+
     // LogonUser
     private const int LOGON32_LOGON_NEW_CREDENTIALS = 9;
     private const int LOGON32_PROVIDER_WINNT50      = 3;
@@ -60,13 +67,17 @@ public static class OfflineDomainJoin
 
     /// <summary>
     /// Provisions (or reuses) the computer account and returns the base64 ODJ blob, or
-    /// null on failure. <paramref name="error"/> carries a human-readable reason on failure.
+    /// null on failure. <paramref name="error"/> carries a human-readable reason on failure,
+    /// and <paramref name="returnCode"/> the raw NetProvisionComputerAccount code (0 on
+    /// success, <see cref="NERR_AccountReuseBlockedByPolicy"/> when re-use is blocked, or
+    /// -1 if it failed before the API call).
     /// </summary>
     public static string? Provision(
         string domain, string machineName, string? machineOu, string? dcName,
-        string saUser, string saDomain, string saPassword, out string error)
+        string saUser, string saDomain, string saPassword, out string error, out int returnCode)
     {
         error = "";
+        returnCode = -1;
         IntPtr token = IntPtr.Zero;
         bool impersonating = false;
         try
@@ -92,6 +103,7 @@ public static class OfflineDomainJoin
                 string.IsNullOrWhiteSpace(dcName)    ? null : dcName,
                 options, IntPtr.Zero, IntPtr.Zero, out IntPtr textPtr);
 
+            returnCode = rc;
             if (rc != 0)
             {
                 // rc is a Win32/NERR code; surface it so callers can log precisely.

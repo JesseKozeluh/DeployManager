@@ -36,11 +36,12 @@
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
-    [string] $BootWimPath   = "$env:ProgramData\DeployManager\tftp\Boot\boot.wim",
-    [string] $MountPath     = 'C:\WinPE_MOUNT',
+    [string]   $BootWimPath   = "$env:ProgramData\DeployManager\tftp\Boot\boot.wim",
+    [string]   $MountPath     = 'C:\WinPE_MOUNT',
     [Parameter(Mandatory)] [string] $ServerUrl,
     [Parameter(Mandatory)] [string] $WinpePassword,
-    [int]    $WimIndex      = 1
+    [int]      $WimIndex      = 1,
+    [string]   $DriverPathList = ''
 )
 
 Set-StrictMode -Version Latest
@@ -161,6 +162,53 @@ if ($content -notmatch [regex]::Escape($oldPass)) {
 
 Set-Content -Path $scriptPath -Value $content -Encoding UTF8 -NoNewline
 Write-Host "  Script written." -ForegroundColor Green
+
+# -- Stage WinPE drivers -------------------------------------------------------
+# DISM /Add-Driver fails on boot.wim when running from Server 2022 (Error 87).
+# Workaround: copy driver files into X:\Drivers\WinPE\ inside the WIM, then
+# Start-OSDeploy.ps1 loads them at runtime via pnputil before disk detection.
+$DriverPaths = @(if ($DriverPathList) {
+    $DriverPathList.Split(';', [System.StringSplitOptions]::RemoveEmptyEntries)
+} else { @() })
+
+$winpeDriverDir = Join-Path $MountPath 'Drivers\WinPE'
+if ($DriverPaths.Count -gt 0) {
+    Write-Host ""
+    Write-Host "Staging WinPE drivers (file copy into WIM)..." -ForegroundColor Yellow
+    if (Test-Path $winpeDriverDir) {
+        Remove-Item $winpeDriverDir -Recurse -Force
+        Write-Host "  Cleared previous WinPE drivers." -ForegroundColor Gray
+    }
+    New-Item -ItemType Directory -Path $winpeDriverDir -Force | Out-Null
+    $drvTotal = 0; $drvFail = 0
+    foreach ($drvPath in $DriverPaths) {
+        $drvPath = $drvPath.Trim()
+        if (-not $drvPath) { continue }
+        if (-not (Test-Path $drvPath)) {
+            Write-Warning "  Driver path not found, skipping: $drvPath"
+            $drvFail++
+            continue
+        }
+        $folderName = Split-Path $drvPath -Leaf
+        $destDir    = Join-Path $winpeDriverDir $folderName
+        Write-Host "  Copying: $drvPath -> Drivers\WinPE\$folderName" -ForegroundColor Gray
+        Copy-Item -Path $drvPath -Destination $destDir -Recurse -Force
+        $drvTotal++
+    }
+    if ($drvTotal -gt 0) {
+        Write-Host "  $drvTotal driver folder(s) staged into boot.wim." -ForegroundColor Green
+    }
+    if ($drvFail -gt 0) {
+        Write-Warning "  $drvFail driver path(s) failed or were skipped."
+    }
+} else {
+    Write-Host ""
+    Write-Host "No WinPE drivers configured - skipping driver staging." -ForegroundColor DarkGray
+    if (Test-Path $winpeDriverDir) {
+        Remove-Item $winpeDriverDir -Recurse -Force
+        Write-Host "  Cleared stale WinPE drivers from WIM." -ForegroundColor Gray
+    }
+}
 
 # -- Unmount and commit -------------------------------------------------------
 Write-Host ""

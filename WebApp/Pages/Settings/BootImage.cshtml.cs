@@ -21,10 +21,12 @@ public class BootImageModel : PageModel
     public bool   PasswordSet    { get; private set; }
 
     [BindProperty] public string? CustomBootWimPath { get; set; }
+    [BindProperty] public string? NewDriverPath { get; set; }
 
     public string? PatchOutput  { get; private set; }
     public bool    PatchSuccess { get; private set; }
     public string? AdkDismPath  { get; private set; }
+    public List<string> DriverPaths { get; private set; } = new();
 
     // iPXE HTTP boot
     public string TftpRootPath   { get; private set; } = "";
@@ -51,6 +53,32 @@ public class BootImageModel : PageModel
         {
             var s = _settings.Get();
             s.BootWimPath = CustomBootWimPath.Trim();
+            _settings.Save(s);
+        }
+        return RedirectToPage();
+    }
+
+    public IActionResult OnPostAddDriver()
+    {
+        if (!string.IsNullOrWhiteSpace(NewDriverPath))
+        {
+            var path = NewDriverPath.Trim();
+            var s = _settings.Get();
+            if (!s.WinpeDriverPaths.Contains(path, StringComparer.OrdinalIgnoreCase))
+            {
+                s.WinpeDriverPaths.Add(path);
+                _settings.Save(s);
+            }
+        }
+        return RedirectToPage();
+    }
+
+    public IActionResult OnPostRemoveDriver(string path)
+    {
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            var s = _settings.Get();
+            s.WinpeDriverPaths.RemoveAll(p => p.Equals(path.Trim(), StringComparison.OrdinalIgnoreCase));
             _settings.Save(s);
         }
         return RedirectToPage();
@@ -94,14 +122,23 @@ public class BootImageModel : PageModel
             return Page();
         }
 
+        var driverArg = "";
+        if (s.WinpeDriverPaths.Count > 0)
+        {
+            var joined = string.Join(';', s.WinpeDriverPaths.Where(p => !string.IsNullOrWhiteSpace(p)));
+            if (joined.Length > 0)
+                driverArg = $" -DriverPathList \"{joined}\"";
+        }
+
         var args = $"-ExecutionPolicy Bypass -NonInteractive -File \"{scriptPath}\" " +
                    $"-BootWimPath \"{BootWimPath}\" " +
                    $"-ServerUrl \"{s.ApiServerUrl}\" " +
-                   $"-WinpePassword \"{rawPass.Replace("\"", "`\"")}\"";
+                   $"-WinpePassword \"{rawPass.Replace("\"", "`\"")}\"" +
+                   driverArg;
 
         try
         {
-            var psi = new ProcessStartInfo("powershell.exe", args)
+            var psi = new ProcessStartInfo(DeployManager.Services.SystemPaths.PowerShell, args)
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError  = true,
@@ -141,9 +178,10 @@ public class BootImageModel : PageModel
             : s.BootWimPath;
         BootWimPath = Environment.ExpandEnvironmentVariables(BootWimPath);
 
-        WimExists   = System.IO.File.Exists(BootWimPath);
-        ServerUrl   = s.ApiServerUrl;
-        PasswordSet = !string.IsNullOrWhiteSpace(s.WinpeLocalPassword);
+        WimExists    = System.IO.File.Exists(BootWimPath);
+        ServerUrl    = s.ApiServerUrl;
+        PasswordSet  = !string.IsNullOrWhiteSpace(s.WinpeLocalPassword);
+        DriverPaths  = s.WinpeDriverPaths;
 
         // Detect ADK DISM for the UI hint
         var adkCandidates = new[]

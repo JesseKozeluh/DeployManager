@@ -40,8 +40,8 @@
         </div>
         <div class="mb-3">
             <label class="form-label">API / web app URL</label>
-            <input asp-for="Cfg.ApiServerUrl" class="form-control font-monospace" placeholder="http://192.168.1.10:8090" />
-            <div class="form-text">This web app (port 8090). Used by WinPE and PostInstall scripts.</div>
+            <input asp-for="Cfg.ApiServerUrl" class="form-control font-monospace" placeholder="https://192.168.1.10:8090" />
+            <div class="form-text">This web app (port 8090). Used by WinPE and PostInstall scripts. <strong>Must be <code>https://</code></strong> — the API is HTTPS-only; an <code>http://</code> value is corrected automatically on save.</div>
         </div>
         <div class="mb-3">
             <label class="form-label">Server IP address</label>
@@ -88,6 +88,28 @@
             <input asp-for="Cfg.DefaultComputerOU" class="form-control font-monospace"
                    placeholder="OU=Computers,DC=corp,DC=contoso,DC=com" />
             <div class="form-text">Fallback OU when no site match found.</div>
+        </div>
+        <div class="mb-1">
+            <div class="form-check form-switch mb-2">
+                <input asp-for="Cfg.RecreateComputerAccountOnReuseFailure" type="checkbox" class="form-check-input" role="switch" />
+                <label class="form-check-label" asp-for="Cfg.RecreateComputerAccountOnReuseFailure">
+                    Recreate computer object when re-use is blocked
+                </label>
+            </div>
+            <div class="form-text">
+                When re-imaging a machine that already has an Active Directory computer object, Deploy Manager
+                normally <strong>re-uses</strong> that object. Since <strong>KB5020276</strong>, some domain
+                controllers block re-use of an existing account (provisioning fails with error
+                <code>2732</code> and the machine can't domain-join). With this enabled, Deploy Manager
+                <strong>deletes and recreates</strong> the object in that case, so re-imaging still succeeds.
+                <div class="alert alert-warning py-2 px-3 mt-2 mb-0" style="font-size:.82rem">
+                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                    Deleting a computer object also removes its escrowed <strong>BitLocker recovery keys</strong>
+                    and its <strong>security-group memberships</strong>. It only triggers when a re-use is
+                    actually blocked, and the deleted object is immediately recreated — but leave this
+                    <strong>off</strong> unless your domain controllers reject account re-use.
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -146,6 +168,148 @@
             running with BranchCache enabled before imaging begins, so it can act as a peer source.
             No hosted-cache server or WSUS infrastructure is required for Distributed Cache mode.
         </div>
+        <hr />
+        <div class="mb-1">
+            <label class="form-label">Software install timeout (minutes)</label>
+            <input asp-for="Cfg.SoftwareInstallTimeoutMinutes" type="number" min="1" max="1440"
+                   class="form-control" style="max-width:160px" />
+            <div class="form-text">
+                Maximum time a single software installer may run during post-install before it is
+                <strong>terminated and recorded as a timeout failure</strong>, so one hung installer can't
+                stall the whole deployment. The deployment then continues to the next package. Default
+                <strong>60</strong>. Raise it for large or slow installers; lower it for a tighter
+                unattended run. Applies to newly patched boot images.
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><i class="bi bi-shield-lock me-2"></i>BitLocker Drive Encryption</div>
+    <div class="card-body">
+        <div class="form-check form-switch mb-2">
+            <input asp-for="Cfg.BitLockerEnable" type="checkbox" class="form-check-input" role="switch" />
+            <label class="form-check-label" asp-for="Cfg.BitLockerEnable">
+                Enable BitLocker after imaging
+            </label>
+        </div>
+        <div class="form-text mb-3">
+            After the software phase, encrypt the machine with BitLocker. Requires a TPM (present on all
+            Secure Boot hardware) — machines without a ready TPM are skipped and reported. Applies to newly
+            patched boot images.
+        </div>
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Volumes to encrypt</label>
+                <select asp-for="Cfg.BitLockerVolumes" class="form-select">
+                    <option value="os">OS drive only</option>
+                    <option value="osdata">OS drive + all fixed data drives</option>
+                    <option value="specific">Specific volumes (by label or letter)</option>
+                </select>
+                <div class="form-text">"OS + all fixed data drives" auto-detects every fixed, non-OS volume — no drive letters needed. Removable drives are never encrypted.</div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Specific volumes</label>
+                <input asp-for="Cfg.BitLockerSpecificVolumes" class="form-control" placeholder="DATA;E" />
+                <div class="form-text">Used only with "Specific volumes". Semicolon-separated volume labels or drive letters.</div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Encryption method</label>
+                <select asp-for="Cfg.BitLockerEncryptionMethod" class="form-select">
+                    <option value="XtsAes256">XTS-AES 256 (recommended)</option>
+                    <option value="XtsAes128">XTS-AES 128</option>
+                </select>
+            </div>
+            <div class="col-md-6 d-flex align-items-end pb-2">
+                <div class="form-check">
+                    <input asp-for="Cfg.BitLockerUsedSpaceOnly" type="checkbox" class="form-check-input" />
+                    <label class="form-check-label" asp-for="Cfg.BitLockerUsedSpaceOnly">Encrypt used space only (faster)</label>
+                </div>
+            </div>
+        </div>
+
+        <hr />
+        <label class="form-label d-block mb-2">Recovery-key escrow <span class="text-secondary" style="font-weight:400">(enable one or more)</span></label>
+        <div class="form-check mb-1">
+            <input asp-for="Cfg.BitLockerBackupToAd" type="checkbox" class="form-check-input" />
+            <label class="form-check-label" asp-for="Cfg.BitLockerBackupToAd">Active Directory (AD DS)</label>
+        </div>
+        <div class="form-text mb-2" style="margin-left:1.6rem">
+            Domain-joined machines. Deploy Manager backs the recovery key up to the computer object in AD DS.
+        </div>
+        <div class="form-check mb-1" style="margin-left:1.6rem">
+            <input asp-for="Cfg.BitLockerAdBackupViaGpo" type="checkbox" class="form-check-input" />
+            <label class="form-check-label" asp-for="Cfg.BitLockerAdBackupViaGpo">AD backup is handled by my Group Policy</label>
+        </div>
+        <div class="form-text mb-2" style="margin-left:3.2rem">
+            Tick this if you already run the BitLocker GPO <em>&ldquo;Store BitLocker recovery information in
+            Active Directory Domain Services&rdquo;</em>. That policy escrows the key at encryption time and
+            refuses the manual backup, so Deploy Manager skips its own attempt and trusts the GPO (rather than
+            reporting a false failure).
+        </div>
+        <div class="form-check mb-1">
+            <input asp-for="Cfg.BitLockerBackupToEntra" type="checkbox" class="form-check-input" />
+            <label class="form-check-label" asp-for="Cfg.BitLockerBackupToEntra">Entra ID / Intune</label>
+        </div>
+        <div class="form-text mb-2" style="margin-left:1.6rem">
+            For Entra-joined or hybrid-joined machines. Note: a pure Autopilot machine isn't Entra-joined
+            until OOBE, so BitLocker for those is usually better handled by an Intune policy after enrollment.
+        </div>
+        <div class="form-check mb-1">
+            <input asp-for="Cfg.BitLockerSaveToShare" type="checkbox" class="form-check-input" />
+            <label class="form-check-label" asp-for="Cfg.BitLockerSaveToShare">Save to a network share</label>
+        </div>
+        <div class="mb-2" style="margin-left:1.6rem">
+            <input asp-for="Cfg.BitLockerSharePath" class="form-control font-monospace"
+                   placeholder="\\server\BitLockerKeys" style="max-width:420px" />
+            <div class="form-text">Writes each recovery key to <code>&lt;ComputerName&gt;_&lt;drive&gt;.txt</code> on the share. The machine account needs write access.</div>
+        </div>
+        <div class="alert alert-danger py-2 px-3 mb-3" style="font-size:.82rem">
+            <i class="bi bi-shield-exclamation me-1"></i>
+            The share option stores the recovery key in <strong>clear text</strong>. Restrict the share to
+            administrators only, and prefer AD or Entra escrow where available.
+        </div>
+
+        <div class="form-check mb-2">
+            <input asp-for="Cfg.BitLockerRequireEscrow" type="checkbox" class="form-check-input" />
+            <label class="form-check-label" asp-for="Cfg.BitLockerRequireEscrow">
+                Require successful escrow (flag the job if no target accepts the key)
+            </label>
+        </div>
+        <div class="alert alert-warning py-2 px-3 mb-0" style="font-size:.82rem">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            With this on, if the recovery key can't be escrowed to any enabled target the job is marked
+            <strong>failed</strong> for attention. The drive is left encrypted and functional &mdash; it is
+            never auto-decrypted &mdash; so you can escrow the key manually or investigate.
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><i class="bi bi-activity me-2"></i>Job Monitoring</div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Inactivity timeout (minutes)</label>
+                <input asp-for="Cfg.JobInactivityTimeoutMinutes" type="number" min="5" max="1440"
+                       class="form-control" style="max-width:160px" />
+                <div class="form-text">
+                    A job that's imaging with <strong>no progress or heartbeat</strong> for this long is marked
+                    <em>timed out</em>. It's activity-based, so a slow-but-progressing deployment (large WIM over
+                    WAN, long installer) is never falsely failed. Default <strong>30</strong>.
+                </div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Maximum duration (minutes)</label>
+                <input asp-for="Cfg.JobMaxDurationMinutes" type="number" min="30" max="2880"
+                       class="form-control" style="max-width:160px" />
+                <div class="form-text">
+                    Absolute ceiling — a job is timed out after this long regardless of activity, as a backstop.
+                    Default <strong>480</strong> (8 hours).
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -193,6 +357,26 @@
             <input class="form-control font-monospace" readonly
                    value="@(string.IsNullOrEmpty(Model.Cfg.ApiServerUrl) ? "https://<your-host>:8090" : Model.Cfg.ApiServerUrl)/signin-oidc" />
             <div class="form-text">Add as a <strong>Web</strong> redirect URI on the app registration — one per host you sign in from (e.g. the CNAME).</div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><i class="bi bi-cloud-arrow-up me-2"></i>Intune Autopilot</div>
+    <div class="card-body">
+        <div class="form-check form-switch mb-2">
+            <input asp-for="Cfg.IntuneAutoRegister" type="checkbox" class="form-check-input" role="switch" />
+            <label class="form-check-label" asp-for="Cfg.IntuneAutoRegister">
+                Automatically register devices in Intune Autopilot
+            </label>
+        </div>
+        <div class="form-text">
+            When enabled, Deploy Manager automatically registers Autopilot devices with
+            Intune via the Microsoft Graph API after collecting the hardware hash. It checks
+            if the device is already registered (by serial number) and skips re-registration,
+            updating the group tag if it has changed. Requires the Entra app registration
+            above to have the <code>DeviceManagementServiceConfig.ReadWrite.All</code>
+            application permission (with admin consent).
         </div>
     </div>
 </div>

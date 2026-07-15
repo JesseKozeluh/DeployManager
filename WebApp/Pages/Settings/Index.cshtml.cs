@@ -49,11 +49,12 @@ public class IndexModel : PageModel
         s.OrgName           = Cfg.OrgName?.Trim() ?? "";
         s.ComputerPrefix    = Cfg.ComputerPrefix?.Trim() ?? "";
         s.DeployServerUrl   = Cfg.DeployServerUrl?.Trim().TrimEnd('/') ?? "";
-        s.ApiServerUrl      = Cfg.ApiServerUrl?.Trim().TrimEnd('/') ?? "";
+        s.ApiServerUrl      = AppSettings.NormalizeApiUrl(Cfg.ApiServerUrl);
         s.ServerIp          = Cfg.ServerIp?.Trim() ?? "";
         s.DomainFqdn        = Cfg.DomainFqdn?.Trim() ?? "";
         s.ServiceAccountUpn = Cfg.ServiceAccountUpn?.Trim() ?? "";
         s.DefaultComputerOU = Cfg.DefaultComputerOU?.Trim() ?? "";
+        s.RecreateComputerAccountOnReuseFailure = Cfg.RecreateComputerAccountOnReuseFailure;
         s.WinpeLocalAccount = Cfg.WinpeLocalAccount?.Trim() ?? "";
         s.DefaultTimezone   = Cfg.DefaultTimezone?.Trim() ?? "";
         s.DefaultLocale     = Cfg.DefaultLocale?.Trim() ?? "";
@@ -63,6 +64,29 @@ public class IndexModel : PageModel
         s.AuthMode      = string.Equals(Cfg.AuthMode, "entra", StringComparison.OrdinalIgnoreCase) ? "entra" : "local";
         s.EntraTenantId = Cfg.EntraTenantId?.Trim() ?? "";
         s.EntraClientId = Cfg.EntraClientId?.Trim() ?? "";
+
+        // Intune Autopilot
+        s.IntuneAutoRegister = Cfg.IntuneAutoRegister;
+
+        // Software delivery
+        s.SoftwareInstallTimeoutMinutes = Cfg.SoftwareInstallTimeoutMinutes > 0 ? Cfg.SoftwareInstallTimeoutMinutes : 60;
+
+        // Job monitoring (watchdog)
+        s.JobInactivityTimeoutMinutes = Cfg.JobInactivityTimeoutMinutes > 0 ? Cfg.JobInactivityTimeoutMinutes : 30;
+        s.JobMaxDurationMinutes       = Cfg.JobMaxDurationMinutes > 0 ? Cfg.JobMaxDurationMinutes : 480;
+
+        // BitLocker
+        s.BitLockerEnable           = Cfg.BitLockerEnable;
+        s.BitLockerVolumes          = Cfg.BitLockerVolumes?.Trim() ?? "os";
+        s.BitLockerSpecificVolumes  = Cfg.BitLockerSpecificVolumes?.Trim() ?? "";
+        s.BitLockerEncryptionMethod = Cfg.BitLockerEncryptionMethod == "XtsAes128" ? "XtsAes128" : "XtsAes256";
+        s.BitLockerUsedSpaceOnly    = Cfg.BitLockerUsedSpaceOnly;
+        s.BitLockerBackupToAd       = Cfg.BitLockerBackupToAd;
+        s.BitLockerAdBackupViaGpo   = Cfg.BitLockerAdBackupViaGpo;
+        s.BitLockerBackupToEntra    = Cfg.BitLockerBackupToEntra;
+        s.BitLockerSaveToShare      = Cfg.BitLockerSaveToShare;
+        s.BitLockerSharePath        = Cfg.BitLockerSharePath?.Trim().TrimEnd('\\') ?? "";
+        s.BitLockerRequireEscrow    = Cfg.BitLockerRequireEscrow;
 
         // SMTP
         s.SmtpHost         = Cfg.SmtpHost?.Trim() ?? "";

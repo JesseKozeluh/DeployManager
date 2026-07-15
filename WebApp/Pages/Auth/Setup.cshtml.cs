@@ -54,7 +54,7 @@ public class SetupModel : PageModel
         s.OrgName          = orgName?.Trim() ?? "";
         s.ComputerPrefix   = computerPrefix?.Trim() ?? "";
         s.DeployServerUrl  = deployServerUrl?.Trim().TrimEnd('/') ?? "";
-        s.ApiServerUrl     = apiServerUrl?.Trim().TrimEnd('/') ?? "";
+        s.ApiServerUrl     = AppSettings.NormalizeApiUrl(apiServerUrl);
         s.DomainFqdn       = domainFqdn?.Trim() ?? "";
         s.DefaultComputerOU = defaultComputerOU?.Trim() ?? "";
         s.DefaultTimezone  = defaultTimezone?.Trim() ?? "";

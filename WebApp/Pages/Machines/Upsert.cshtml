@@ -55,9 +55,9 @@
             <div class="form-text">Used for PSRemoting PXE reboot</div>
         </div>
         <div class="col-md-6">
-            <label asp-for="Machine.Site" class="form-label">Site <span class="text-danger">*</span></label>
-            <select asp-for="Machine.Site" class="form-select" id="siteSelect" required>
-                <option value="">— Select site —</option>
+            <label asp-for="Machine.Site" class="form-label">Site</label>
+            <select asp-for="Machine.Site" class="form-select" id="siteSelect">
+                <option value="">— No site —</option>
                 @foreach (var site in Model.Sites)
                 {
                     <option value="@site.Name" data-ou="@site.OU">@site.Name</option>

@@ -82,6 +82,7 @@ builder.Services.AddSingleton<EmailNotificationService>();
 // and it performs the slow first-run work the others (and Kestrel) depend on.
 builder.Services.AddHostedService<StartupInitService>();
 builder.Services.AddHostedService<JobWatchdogService>();
+builder.Services.AddSingleton<IntuneService>();
 builder.Services.AddHttpClient();
 
 // ── Rate limiting (ISM-1390: account lockout / brute-force mitigation) ────────
@@ -453,6 +454,18 @@ $global:DefaultTimezone   = '{Escape(s.DefaultTimezone)}'
 $global:DefaultLocale     = '{Escape(s.DefaultLocale)}'
 $global:WinpeLocalAccount = '{Escape(s.WinpeLocalAccount)}'
 $global:EnableBranchCache = ${(s.EnableBranchCache ? "true" : "false")}
+$global:SoftwareInstallTimeoutMinutes = {(s.SoftwareInstallTimeoutMinutes > 0 ? s.SoftwareInstallTimeoutMinutes : 60)}
+$global:BitLockerEnable = ${(s.BitLockerEnable ? "true" : "false")}
+$global:BitLockerVolumes = '{Escape(s.BitLockerVolumes)}'
+$global:BitLockerSpecificVolumes = '{Escape(s.BitLockerSpecificVolumes)}'
+$global:BitLockerEncryptionMethod = '{Escape(s.BitLockerEncryptionMethod)}'
+$global:BitLockerUsedSpaceOnly = ${(s.BitLockerUsedSpaceOnly ? "true" : "false")}
+$global:BitLockerBackupToAd = ${(s.BitLockerBackupToAd ? "true" : "false")}
+$global:BitLockerAdBackupViaGpo = ${(s.BitLockerAdBackupViaGpo ? "true" : "false")}
+$global:BitLockerBackupToEntra = ${(s.BitLockerBackupToEntra ? "true" : "false")}
+$global:BitLockerSaveToShare = ${(s.BitLockerSaveToShare ? "true" : "false")}
+$global:BitLockerSharePath = '{Escape(s.BitLockerSharePath)}'
+$global:BitLockerRequireEscrow = ${(s.BitLockerRequireEscrow ? "true" : "false")}
 $global:SiteConfig = @(
     {sites}
 )
@@ -488,6 +501,47 @@ jobApi.MapPost("/complete", async (string mac, HttpContext ctx, DataStore data, 
 jobApi.MapPost("/imaging-started", (string mac, DataStore data) =>
 {
     data.MarkJobImaging(mac);
+    return Results.Ok("ok");
+});
+
+jobApi.MapPost("/heartbeat", (string mac, DataStore data) =>
+{
+    data.Heartbeat(mac);
+    return Results.Ok("ok");
+});
+
+jobApi.MapPost("/hardware-hash", async (string mac, HttpContext ctx, DataStore data, IntuneService intune) =>
+{
+    var body = await System.Text.Json.JsonSerializer.DeserializeAsync<HardwareHashReport>(ctx.Request.Body, _jsonOpts);
+    if (body == null || string.IsNullOrWhiteSpace(body.Hash))
+        return Results.BadRequest("hash is required");
+    var hash = body.Hash.Trim();
+    if (hash.Length > 8192)
+        return Results.BadRequest("hash exceeds maximum length");
+    data.SetHardwareHash(mac, hash, body.ProductId?.Trim() ?? "");
+
+    if (intune.IsConfigured() && !string.IsNullOrWhiteSpace(body.SerialNumber))
+    {
+        var serial   = body.SerialNumber.Trim();
+        var groupTag = data.GetJobByMac(Machine.NormalizeMac(mac))?.GroupTag ?? "";
+        _ = Task.Run(() => intune.RegisterDeviceAsync(mac, serial, hash, groupTag,
+            (m, s) => data.SetIntuneStatus(m, s)));
+    }
+
+    return Results.Ok("ok");
+});
+
+jobApi.MapGet("/intune-status", (string mac, DataStore data) =>
+{
+    var job = data.GetJobByMac(Machine.NormalizeMac(mac));
+    if (job == null) return Results.NotFound();
+    return Results.Ok(new { status = job.IntuneStatus });
+});
+
+jobApi.MapPost("/bitlocker", async (string mac, HttpContext ctx, DataStore data) =>
+{
+    var body = await System.Text.Json.JsonSerializer.DeserializeAsync<BitLockerReport>(ctx.Request.Body, _jsonOpts);
+    data.SetBitLockerStatus(mac, body?.Status?.Trim() ?? "", body?.Detail?.Trim() ?? "");
     return Results.Ok("ok");
 });
 
@@ -576,6 +630,8 @@ record PostInstallReport(List<SoftwareInstallResult>? Results);
 record SoftwareStartReport(string Name, int Total);
 record ImagingErrorReport(string Message);
 record DiscoverReport(string Mac, string Ip, string Model, string Serial);
+record HardwareHashReport(string Hash, string? ProductId = null, string? SerialNumber = null);
+record BitLockerReport(string? Status, string? Detail);
 
 /// <summary>
 /// Performs slow first-run initialisation (SQLite database creation, TLS

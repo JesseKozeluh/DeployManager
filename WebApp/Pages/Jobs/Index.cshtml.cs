@@ -56,4 +56,39 @@ public class IndexModel : PageModel
         _data.MarkJobImaging(mac);
         return Content("ok");
     }
+
+    public IActionResult OnGetAutopilotCsv(string? mac = null)
+    {
+        List<DeploymentJob> jobs;
+        string filename;
+        if (!string.IsNullOrEmpty(mac))
+        {
+            var job = _data.GetJobsWithHardwareHash().FirstOrDefault(j => j.MacAddress == mac);
+            jobs = job != null ? new() { job } : new();
+            filename = $"Autopilot_{jobs.FirstOrDefault()?.DeviceName ?? mac}_{DateTime.Now:yyyyMMdd}.csv";
+        }
+        else
+        {
+            jobs = _data.GetJobsWithHardwareHash();
+            filename = $"AutopilotHashes_{DateTime.Now:yyyyMMdd_HHmm}.csv";
+        }
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Device Serial Number,Windows Product ID,Hardware Hash,Group Tag");
+        foreach (var j in jobs)
+        {
+            var serial = _data.GetMachineByMac(j.MacAddress)?.SerialNumber ?? "";
+            sb.AppendLine(CsvEscape(serial) + "," + CsvEscape(j.WindowsProductId) + "," +
+                          CsvEscape(j.HardwareHash) + "," + CsvEscape(j.GroupTag));
+        }
+        return File(System.Text.Encoding.UTF8.GetBytes(sb.ToString()),
+            "text/csv", filename);
+    }
+
+    private static string CsvEscape(string v)
+    {
+        if (string.IsNullOrEmpty(v)) return "";
+        if (v.Contains(',') || v.Contains('"') || v.Contains('\n'))
+            return "\"" + v.Replace("\"", "\"\"") + "\"";
+        return v;
+    }
 }

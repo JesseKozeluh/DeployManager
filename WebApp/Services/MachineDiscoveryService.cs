@@ -151,7 +151,7 @@ public class MachineDiscoveryService
         {
             await File.WriteAllTextAsync(scriptPath, script);
 
-            var psi = new ProcessStartInfo("powershell.exe",
+            var psi = new ProcessStartInfo(SystemPaths.PowerShell,
                 $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{scriptPath}\"")
             {
                 RedirectStandardOutput = true,

@@ -146,6 +146,56 @@ function Send-JobError([string]$message) {
     } catch { }
 }
 
+# Lightweight keep-alive so the server watchdog knows a long step (WIM download/apply)
+# is still progressing and does not time the job out for inactivity.
+function Send-Heartbeat {
+    if (-not $macKey -or -not $apiServer) { return }
+    try {
+        $req = [System.Net.WebRequest]::Create("$apiServer/api/jobs/$macKey/heartbeat")
+        $req.Method        = 'POST'
+        $req.ContentType   = 'application/json'
+        $req.Timeout       = 10000
+        Set-DeployToken $req
+        $req.ContentLength = 0
+        $req.GetRequestStream().Close()
+        $req.GetResponse().Close()
+    } catch { }
+}
+
+# Runs a scriptblock on a background runspace with a hard timeout. A synchronous call that
+# blocks the thread (e.g. Get-Disk when the storage driver is missing on Intel VMD/RST
+# hardware) would otherwise freeze WinPE with no error. Returns
+# @{ TimedOut = $bool; Result = ... }. In-process, so it works in WinPE (no child job).
+function Invoke-WithTimeout([scriptblock]$Script, [int]$TimeoutSec) {
+    $ps = [PowerShell]::Create()
+    $null = $ps.AddScript($Script)
+    $handle = $ps.BeginInvoke()
+    if ($handle.AsyncWaitHandle.WaitOne([TimeSpan]::FromSeconds($TimeoutSec))) {
+        $res = $null
+        try { $res = $ps.EndInvoke($handle) } catch {}
+        try { $ps.Dispose() } catch {}
+        return @{ TimedOut = $false; Result = $res }
+    }
+    try { $ps.Stop() }    catch {}
+    try { $ps.Dispose() } catch {}
+    return @{ TimedOut = $true; Result = $null }
+}
+
+# Report a failure that occurred BEFORE any destructive disk change. Nothing has been
+# wiped, so on an automated deploy reboot back to the existing OS to recover the machine
+# rather than leave it frozen in WinPE (mirrors the no-blob self-recovery). Manual runs
+# stay put so the operator can read the error on screen.
+function Fail-PreWipe([string]$msg) {
+    Write-Error $msg
+    try { Send-JobError $msg } catch {}
+    if ($job) {
+        Write-Host "Rebooting back to the existing OS in 15 seconds..." -ForegroundColor Yellow
+        Start-Sleep 15
+        & wpeutil reboot
+    }
+    exit 1
+}
+
 # -- Banner --------------------------------------------------------------------
 if ($global:OrgName) { $banner = "$($global:OrgName) - Windows Deployment" } else { $banner = "Windows Deployment" }
 $line   = '=' * ($banner.Length + 4)
@@ -337,7 +387,17 @@ else {
 Write-Host ""
 
 # -- Select target disk (largest FIXED disk; never removable/USB/virtual) -------
-$allDisks = Get-Disk | Sort-Object Number
+# Bound the enumeration: on hardware with Intel VMD/RST enabled and no matching driver in
+# boot.wim, the storage stack does not respond and Get-Disk blocks forever with no error.
+# Time it out and self-recover instead of freezing the machine.
+Write-Host "Enumerating disks..." -ForegroundColor Gray
+$diskProbe = Invoke-WithTimeout { Import-Module Storage -ErrorAction SilentlyContinue; Get-Disk } 120
+if ($diskProbe.TimedOut) {
+    Fail-PreWipe ("Disk enumeration timed out after 120s - the storage stack is not responding. " +
+        "This almost always means a missing storage driver (e.g. Intel VMD / Rapid Storage on newer " +
+        "hardware). Inject the storage driver into boot.wim, or set the BIOS SATA/NVMe mode to AHCI.")
+}
+$allDisks = @($diskProbe.Result) | Sort-Object Number
 $diskInfo = ($allDisks | Select-Object Number, FriendlyName,
                 @{N='SizeGB';E={[math]::Round($_.Size/1GB,0)}}, BusType, PartitionStyle, OperationalStatus |
             Format-Table -AutoSize | Out-String).Trim()
@@ -348,8 +408,9 @@ $target = $allDisks |
     Where-Object { $_.BusType -notin @('USB','SD','MMC','SDIO','Virtual','File Backed Virtual') } |
     Sort-Object Size -Descending | Select-Object -First 1
 if (-not $target) {
-    $msg = "No fixed disk found to image.`n--- Disks ---`n$diskInfo"
-    Write-Error $msg; Send-JobError $msg; exit 1
+    Fail-PreWipe ("No fixed disk found to image. On newer hardware this usually means the storage " +
+        "driver (Intel VMD / Rapid Storage) is missing from boot.wim - inject it, or switch the BIOS " +
+        "SATA/NVMe mode to AHCI.`n--- Disks ---`n$diskInfo")
 }
 $diskNum = $target.Number
 Write-Host ("Target disk: {0} ({1}, {2} GB, {3})" -f $diskNum, $target.FriendlyName, [math]::Round($target.Size/1GB,0), $target.BusType) -ForegroundColor Green
@@ -435,11 +496,16 @@ while (-not $complete -and $attempt -lt $maxAttempts) {
         $resp   = $req.GetResponse()
         $stream = $resp.GetResponseStream()
         $fs     = [System.IO.File]::Open($localWim, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write)
-        $buf    = New-Object byte[] 1048576
-        $last   = [DateTime]::Now
+        $buf      = New-Object byte[] 1048576
+        $last     = [DateTime]::Now
+        $lastBeat = [DateTime]::Now
         while (($read = $stream.Read($buf, 0, $buf.Length)) -gt 0) {
             $fs.Write($buf, 0, $read)
             $have += $read
+            if (([DateTime]::Now - $lastBeat).TotalSeconds -ge 60) {
+                Send-Heartbeat
+                $lastBeat = [DateTime]::Now
+            }
             if (([DateTime]::Now - $last).TotalMilliseconds -ge 300) {
                 $dlMB = [math]::Round($have / 1MB)
                 if ($totalBytes -gt 0) {
@@ -473,6 +539,7 @@ if (-not $complete -or -not (Test-Path $localWim) -or (Get-Item $localWim).Lengt
 Write-Host "  Download complete ($attempt attempt(s))." -ForegroundColor Green
 
 Write-Host "Applying image..." -ForegroundColor Green
+Send-Heartbeat   # apply is a multi-minute synchronous step with no other callback
 try {
     Expand-WindowsImage -ImagePath $localWim -Index $wimIndex -ApplyPath "$winDrive\" -ErrorAction Stop
     Write-Host "  Image applied." -ForegroundColor Green
@@ -675,6 +742,20 @@ New-Item -ItemType Directory -Path $setupScripts -Force | Out-Null
     ApiToken           = if ($script:apiToken) { $script:apiToken } else { '' }
     SoftwareItems      = if ($job -and $job.SoftwareItems) { $job.SoftwareItems } else { @() }
     EnableBranchCache  = if ($global:EnableBranchCache) { $global:EnableBranchCache } else { $false }
+    SoftwareInstallTimeoutMinutes = if ($global:SoftwareInstallTimeoutMinutes) { $global:SoftwareInstallTimeoutMinutes } else { 60 }
+    BitLocker = @{
+        Enable           = if ($global:BitLockerEnable) { $true } else { $false }
+        Volumes          = if ($global:BitLockerVolumes) { $global:BitLockerVolumes } else { 'os' }
+        SpecificVolumes  = if ($global:BitLockerSpecificVolumes) { $global:BitLockerSpecificVolumes } else { '' }
+        EncryptionMethod = if ($global:BitLockerEncryptionMethod) { $global:BitLockerEncryptionMethod } else { 'XtsAes256' }
+        UsedSpaceOnly    = if ($null -ne $global:BitLockerUsedSpaceOnly) { [bool]$global:BitLockerUsedSpaceOnly } else { $true }
+        BackupToAd       = if ($null -ne $global:BitLockerBackupToAd) { [bool]$global:BitLockerBackupToAd } else { $true }
+        AdBackupViaGpo   = if ($null -ne $global:BitLockerAdBackupViaGpo) { [bool]$global:BitLockerAdBackupViaGpo } else { $false }
+        BackupToEntra    = if ($null -ne $global:BitLockerBackupToEntra) { [bool]$global:BitLockerBackupToEntra } else { $false }
+        SaveToShare      = if ($null -ne $global:BitLockerSaveToShare) { [bool]$global:BitLockerSaveToShare } else { $false }
+        SharePath        = if ($global:BitLockerSharePath) { $global:BitLockerSharePath } else { '' }
+        RequireEscrow    = if ($null -ne $global:BitLockerRequireEscrow) { [bool]$global:BitLockerRequireEscrow } else { $true }
+    }
 } | ConvertTo-Json -Depth 5 | Set-Content "$setupScripts\DeployConfig.json" -Encoding UTF8
 
 Copy-Item 'X:\Deploy\Start-PostInstall.ps1' "$setupScripts\Start-PostInstall.ps1" -Force
